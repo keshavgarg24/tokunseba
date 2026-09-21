@@ -1,0 +1,38 @@
+[project]
+name = "tokunseba"
+version = "0.1.0"
+description = "Local proxy that cuts LLM token usage for every AI coding tool without changing results"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "starlette>=0.40",
+  "uvicorn>=0.30",
+  "httpx>=0.27",
+  "click>=8.1",
+  "tiktoken>=0.8",
+  "tokenizers>=0.20",
+  "tomli-w>=1.0",
+  "rich>=13.0",
+]
+
+[project.optional-dependencies]
+laya = ["laya>=0.3.5"]
+mcp = ["mcp>=1.0"]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+
+[project.scripts]
+tokunseba = "tokunseba.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tokunseba"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

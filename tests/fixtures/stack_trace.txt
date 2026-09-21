@@ -1,0 +1,34 @@
+Traceback (most recent call last):
+  File "/app/main.py", line 42, in <module>
+    main()
+  File "/app/main.py", line 38, in main
+    run_pipeline(config)
+  File "/app/pipeline.py", line 90, in run_pipeline
+    stage.execute(ctx)
+  File "/app/pipeline.py", line 61, in execute
+    return self._dispatch(ctx)
+  File "/app/pipeline.py", line 47, in _dispatch
+    return handler(ctx)
+  File "/app/handlers/ingest.py", line 118, in handle
+    rows = load_rows(ctx.source)
+  File "/app/handlers/ingest.py", line 77, in load_rows
+    return [parse_row(r) for r in reader]
+  File "/app/handlers/ingest.py", line 77, in <listcomp>
+    return [parse_row(r) for r in reader]
+  File "/app/handlers/ingest.py", line 54, in parse_row
+    return Row(**coerce(raw))
+  File "/app/models/row.py", line 31, in __init__
+    self.count = to_int(count)
+  File "/app/models/row.py", line 19, in to_int
+    return _coerce_scalar(value, int)
+  File "/app/coerce.py", line 140, in _coerce_scalar
+    return _apply(kind, value)
+  File "/app/coerce.py", line 112, in _apply
+    return _narrow(kind, value)
+  File "/app/coerce.py", line 88, in _narrow
+    return kind(value)
+  File "/app/coerce.py", line 63, in __call__
+    return self.inner(value)
+  File "/app/coerce.py", line 40, in inner
+    return int(value)
+ValueError: invalid literal for int() with base 10: 'abc'

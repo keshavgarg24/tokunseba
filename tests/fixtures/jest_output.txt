@@ -1,0 +1,39 @@
+PASS src/a.test.js
+  Footer
+    ✓ renders footer (12 ms)
+    ✓ renders nav links (4 ms)
+    ✓ applies the theme class (2 ms)
+
+PASS src/c.test.js
+  Utils
+    ✓ formats currency (1 ms)
+    ✓ parses query strings (1 ms)
+    ✓ clamps out-of-range values (1 ms)
+
+FAIL src/b.test.js
+  Header
+    ✕ renders header (9 ms)
+    ✓ renders the logo (2 ms)
+
+  ● renders header
+
+    expect(received).toMatchSnapshot()
+
+    - Snapshot  - 1
+    + Received  + 1
+
+      <header
+        className="site-header"
+      >
+    -   Welcome back
+    +   Welcome
+      </header>
+
+      at Object.<anonymous> (src/b.test.js:14:23)
+      at Promise.then.completed (node_modules/jest-circus/build/utils.js:298:28)
+
+Test Suites: 1 failed, 2 passed, 3 total
+Tests:       1 failed, 8 passed, 9 total
+Snapshots:   1 failed, 0 total
+Time:        2.431 s
+Ran all test suites.

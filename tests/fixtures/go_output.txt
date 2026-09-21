@@ -1,0 +1,36 @@
+=== RUN   TestOk
+--- PASS: TestOk (0.00s)
+=== RUN   TestParseEmpty
+--- PASS: TestParseEmpty (0.00s)
+=== RUN   TestParseNested
+--- PASS: TestParseNested (0.01s)
+=== RUN   TestParseUnicode
+--- PASS: TestParseUnicode (0.00s)
+=== RUN   TestLexNumbers
+--- PASS: TestLexNumbers (0.00s)
+=== RUN   TestLexStrings
+--- PASS: TestLexStrings (0.00s)
+=== RUN   TestLexSymbols
+--- PASS: TestLexSymbols (0.00s)
+=== RUN   TestEmitBasic
+--- PASS: TestEmitBasic (0.00s)
+=== RUN   TestEmitPretty
+--- PASS: TestEmitPretty (0.00s)
+=== RUN   TestEmitCompact
+--- PASS: TestEmitCompact (0.00s)
+=== RUN   TestSum
+--- FAIL: TestSum (0.01s)
+    sum_test.go:12: got 5 want 6
+    sum_test.go:13: inputs were a=2 b=3
+=== RUN   TestDiff
+--- FAIL: TestDiff (0.00s)
+    diff_test.go:31: unexpected hunk count 3 want 2
+=== RUN   TestRound
+--- PASS: TestRound (0.00s)
+=== RUN   TestClamp
+--- PASS: TestClamp (0.00s)
+FAIL
+exit status 1
+FAIL	example.com/pkg	0.123s
+ok  	example.com/other	0.020s
+ok  	example.com/util	0.004s

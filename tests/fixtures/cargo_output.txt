@@ -1,0 +1,31 @@
+   Compiling tokunseba v0.1.0 (/home/dev/tokunseba)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.21s
+     Running unittests src/lib.rs (target/debug/deps/tokunseba-9f1c2a4b)
+
+running 12 tests
+test parse::good ... ok
+test parse::empty ... ok
+test parse::nested ... ok
+test parse::unicode ... ok
+test parse::whitespace ... ok
+test lex::numbers ... ok
+test lex::strings ... ok
+test lex::symbols ... ok
+test emit::basic ... ok
+test emit::pretty ... ok
+test emit::compact ... ok
+test parse::bad ... FAILED
+
+failures:
+
+---- parse::bad stdout ----
+thread 'parse::bad' panicked at src/parse.rs:142:9:
+assertion `left == right` failed
+  left: Some(3)
+ right: None
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+failures:
+    parse::bad
+
+test result: FAILED. 11 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s

@@ -1,0 +1,40 @@
+npm WARN deprecated inflight@1.0.6: This module is not supported, and leaks memory.
+npm WARN deprecated rimraf@3.0.2: Rimraf versions prior to v4 are no longer supported.
+npm WARN deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported.
+npm WARN deprecated har-validator@5.1.5: this library is no longer supported.
+npm WARN deprecated uuid@3.4.0: Please upgrade to version 7 or higher.
+npm WARN deprecated request@2.88.2: request has been deprecated, see request/request#3142.
+npm WARN deprecated source-map-url@0.4.1: See https://github.com/lydell/source-map-url#deprecated.
+npm WARN deprecated urix@0.1.0: Please see https://github.com/lydell/urix#deprecated.
+
+> tokunseba-web@0.1.0 prepare
+> husky install
+
+added 412 packages in 18s
+added 118 packages in 4s
+added 96 packages in 2s
+added 64 packages in 2s
+added 41 packages in 1s
+added 27 packages in 1s
+added 19 packages in 1s
+added 12 packages in 1s
+added 9 packages in 1s
+added 7 packages in 1s
+added 5 packages in 1s
+added 4 packages in 1s
+added 3 packages in 1s
+added 2 packages in 1s
+added 1 package in 1s
+
+52 packages are looking for funding
+  run `npm fund` for details
+
+7 vulnerabilities (3 moderate, 4 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
