@@ -225,6 +225,9 @@ class Proxy:
         elif self.cfg.tier3:
             ctx.signals = await self._signals(norm, ctx)
 
+        if norm.provider == "ollama":
+            await self._check_local_fit(norm, body, ctx)
+
         ctx.breakpoints = cur_bp
         ctx.regions = guardian.regions(norm)
         ctx.region_text = {"tools": norm.tools_json, "system": norm.system_text}
@@ -234,6 +237,20 @@ class Proxy:
         if self.cfg.store_bodies:
             (self.bodies / f"{ctx.request_id}.sent.json").write_text(json.dumps(body))
         return body, reroute
+
+    async def _check_local_fit(self, norm, body: dict, ctx: RequestContext) -> None:
+        """A local server truncates a too-long prompt silently, which changes the answer."""
+        from .tokens.context import context_length, request_budget
+        up = self.cfg.upstreams.get("ollama")
+        if up is None:
+            return
+        limit = await context_length(self.client, up.base_url, norm.model, self.ledger)
+        budget = request_budget(norm, body, limit)
+        used = self.est.count(json.dumps(body), norm.provider, norm.model)
+        if used > budget:
+            self.ledger.record_event("context_overflow_risk",
+                                     {"estimated": used, "budget": budget, "window": limit},
+                                     ctx.session_id, ctx.request_id)
 
     # ---------- recording ----------
     def finish(self, usage, norm, ctx: RequestContext, status: int, t0: float) -> None:

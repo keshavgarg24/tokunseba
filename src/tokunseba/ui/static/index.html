@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>tokunseba</title>
+<style>
+  :root{--bg:#0f1115;--card:#171a21;--line:#252a34;--fg:#e6e9ef;--dim:#8b93a7;
+        --good:#4ade80;--warn:#fbbf24;--bad:#f87171;--accent:#60a5fa}
+  @media (prefers-color-scheme: light){
+    :root{--bg:#f6f7f9;--card:#fff;--line:#e3e6ec;--fg:#11151c;--dim:#5c6478;
+          --good:#15803d;--warn:#b45309;--bad:#b91c1c;--accent:#1d4ed8}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:14px/1.5 ui-sans-serif,-apple-system,"SF Pro Text",Segoe UI,Roboto,sans-serif}
+  header{display:flex;align-items:baseline;gap:16px;padding:20px 24px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  h1{font-size:17px;margin:0;letter-spacing:.02em}
+  h1 span{color:var(--dim);font-weight:400}
+  select{background:var(--card);color:var(--fg);border:1px solid var(--line);
+         border-radius:7px;padding:5px 9px;font:inherit}
+  main{padding:20px 24px;max-width:1180px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:12px;margin-bottom:20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:14px 16px}
+  .k{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.07em}
+  .v{font-size:25px;font-weight:600;margin-top:5px;font-variant-numeric:tabular-nums}
+  .sub{color:var(--dim);font-size:12px;margin-top:2px}
+  section{background:var(--card);border:1px solid var(--line);border-radius:11px;
+          padding:16px;margin-bottom:18px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim);margin:0 0 12px}
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);font-size:13px}
+  th{color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+  tr:last-child td{border-bottom:0}
+  td.n,th.n{text-align:right}
+  .bar{height:7px;background:var(--accent);border-radius:4px;min-width:2px}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;
+        background:var(--line);color:var(--dim)}
+  .pill.bad{color:var(--bad)} .pill.warn{color:var(--warn)} .pill.good{color:var(--good)}
+  .empty{color:var(--dim);padding:8px 10px;font-size:13px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+  svg{width:100%;height:110px;display:block}
+  footer{color:var(--dim);font-size:12px;padding:0 24px 28px}
+</style>
+</head>
+<body>
+<header>
+  <h1>tokunseba <span>local token ledger</span></h1>
+  <select id="since">
+    <option value="1d">last 24 hours</option>
+    <option value="7d" selected>last 7 days</option>
+    <option value="30d">last 30 days</option>
+    <option value="3650d">all time</option>
+  </select>
+  <span class="pill" id="live">loading</span>
+</header>
+<main>
+  <div class="grid" id="tiles"></div>
+  <section><h2>Tokens saved per day</h2><svg id="spark" viewBox="0 0 800 110" preserveAspectRatio="none"></svg></section>
+  <section><h2>By tool</h2><table id="tools"></table></section>
+  <section><h2>Signals</h2><table id="events"></table></section>
+  <section><h2>Recent sessions</h2><table id="sessions"></table></section>
+</main>
+<footer>Everything on this page is read from a local SQLite file. Nothing leaves this machine.</footer>
+<script>
+const $ = id => document.getElementById(id);
+const n = v => (v||0).toLocaleString();
+const k = v => v >= 1e6 ? (v/1e6).toFixed(1)+"M" : v >= 1e3 ? (v/1e3).toFixed(1)+"k" : n(v);
+const pct = v => ((v||0)*100).toFixed(0)+"%";
+const usd = v => "$"+(v||0).toFixed(2);
+
+const EVENT_TONE = {
+  cache_drift:"bad", cache_miss_unexplained:"bad", secret_detected:"warn",
+  injection_suspected:"warn", budget_exceeded:"warn", ref_dangling:"warn",
+  upstream_error:"bad", judge_error:"warn", context_overflow_risk:"warn",
+  cache_injected:"good", failover_used:"warn", ttl_advice:"warn",
+  effort_set:"good", model_routed:"good", local_routed:"good", route_signal:""
+};
+const EVENT_HELP = {
+  cache_drift:"a cached prefix changed, so the next request paid full price",
+  cache_miss_unexplained:"a cached request read nothing back",
+  cache_injected:"tokunseba added cache breakpoints a client had omitted",
+  secret_detected:"a credential was seen in an outbound request",
+  injection_suspected:"a tool result looked like it was addressing the assistant",
+  ref_dangling:"a stored reference lost its target and the full text was sent",
+  context_overflow_risk:"a local model was close to silently truncating the prompt",
+  ttl_advice:"this session is slow-paced enough to benefit from the 1 hour cache",
+  route_signal:"difficulty and domain read from the local judge"
+};
+
+async function get(p){ const r = await fetch(p); if(!r.ok) throw new Error(p); return r.json(); }
+
+function tiles(s){
+  const items = [
+    ["tokens saved", k(s.tokens_saved), pct(s.pct_saved)+" of tool output"],
+    ["money saved", usd(s.usd_saved), "versus running without tokunseba"],
+    ["spent", usd(s.usd_spent), n(s.requests)+" requests"],
+    ["cache hit rate", pct(s.cache_hit_rate), k(s.cache_read)+" tokens read from cache"],
+    ["input tokens", k(s.input_tokens), k(s.output_tokens)+" out"],
+  ];
+  $("tiles").innerHTML = items.map(([a,b,c]) =>
+    `<div class="card"><div class="k">${a}</div><div class="v">${b}</div><div class="sub">${c}</div></div>`).join("");
+}
+
+function spark(rows){
+  const el = $("spark");
+  if(!rows.length){ el.innerHTML = '<text x="8" y="60" fill="#8b93a7" font-size="13">no data yet</text>'; return; }
+  const max = Math.max(...rows.map(r=>r.tokens_saved), 1);
+  const step = rows.length > 1 ? 800/(rows.length-1) : 0;
+  const pts = rows.map((r,i)=>[i*step, 100 - (r.tokens_saved/max)*88]);
+  const line = pts.map(p=>p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ");
+  const area = `0,105 ${line} ${(pts.at(-1)[0]).toFixed(1)},105`;
+  el.innerHTML =
+    `<polygon points="${area}" fill="var(--accent)" opacity="0.14"/>` +
+    `<polyline points="${line}" fill="none" stroke="var(--accent)" stroke-width="2"/>` +
+    pts.map((p,i)=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.5" fill="var(--accent)"><title>${new Date(rows[i].day*1000).toDateString()}: ${n(rows[i].tokens_saved)} tokens saved</title></circle>`).join("");
+}
+
+function tools(list){
+  if(!list.length){ $("tools").innerHTML = '<tr><td class="empty">nothing recorded yet</td></tr>'; return; }
+  const max = Math.max(...list.map(t=>t.tokens_saved), 1);
+  $("tools").innerHTML =
+    "<tr><th>tool</th><th class='n'>requests</th><th class='n'>tokens saved</th><th></th><th class='n'>spent</th></tr>" +
+    list.map(t=>`<tr><td>${t.tool}</td><td class="n">${n(t.requests)}</td>
+      <td class="n">${k(t.tokens_saved)}</td>
+      <td style="width:38%"><div class="bar" style="width:${Math.max(t.tokens_saved/max*100,1)}%"></div></td>
+      <td class="n">${usd(t.usd)}</td></tr>`).join("");
+}
+
+function events(map){
+  const rows = Object.entries(map||{}).sort((a,b)=>b[1]-a[1]);
+  if(!rows.length){ $("events").innerHTML = '<tr><td class="empty">no signals yet</td></tr>'; return; }
+  $("events").innerHTML =
+    "<tr><th>signal</th><th class='n'>count</th><th>what it means</th></tr>" +
+    rows.map(([kind,count])=>`<tr>
+      <td><span class="pill ${EVENT_TONE[kind]||""}">${kind}</span></td>
+      <td class="n">${n(count)}</td>
+      <td class="sub">${EVENT_HELP[kind]||""}</td></tr>`).join("");
+}
+
+function sessions(list){
+  if(!list.length){ $("sessions").innerHTML = '<tr><td class="empty">no sessions yet</td></tr>'; return; }
+  $("sessions").innerHTML =
+    "<tr><th>when</th><th>tool</th><th>project</th><th>model</th><th class='n'>reqs</th><th class='n'>saved</th><th class='n'>spent</th></tr>" +
+    list.map(s=>`<tr>
+      <td class="sub">${new Date(s.last_seen*1000).toLocaleString()}</td>
+      <td>${s.tool||"-"}</td>
+      <td class="mono">${(s.project||"-").split("/").slice(-2).join("/")}</td>
+      <td class="sub">${s.model||"-"}</td>
+      <td class="n">${n(s.requests)}</td><td class="n">${k(s.tokens_saved)}</td>
+      <td class="n">${usd(s.usd)}</td></tr>`).join("");
+}
+
+async function refresh(){
+  const since = $("since").value;
+  try{
+    const [s,d,se] = await Promise.all([
+      get(`/_tokunseba/api/stats?since=${since}`),
+      get(`/_tokunseba/api/daily?days=14`),
+      get(`/_tokunseba/api/sessions?limit=25`)]);
+    tiles(s); spark(d); tools(s.by_tool); events(s.events); sessions(se);
+    $("live").textContent = "live"; $("live").className = "pill good";
+  }catch(e){
+    $("live").textContent = "proxy not reachable"; $("live").className = "pill bad";
+  }
+}
+$("since").onchange = refresh;
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>
