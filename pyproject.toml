@@ -3,6 +3,8 @@ name = "tokunseba"
 version = "0.1.0"
 description = "Local proxy that cuts LLM token usage for every AI coding tool without changing results"
 readme = "README.md"
+license = "MIT"
+keywords = ["llm", "tokens", "proxy", "claude", "cost", "cache"]
 requires-python = ">=3.12,<3.14"
 dependencies = [
   "starlette>=0.40",

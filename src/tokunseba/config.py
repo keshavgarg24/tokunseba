@@ -43,6 +43,10 @@ class JudgeConfig:
     laya_device: str = "auto"
     gate_threshold: float = 0.80
     timeout: float = 5.0
+    # The local judge takes on the order of a second per call on a laptop, so by default it
+    # runs after the response has been dispatched and only feeds the ledger. Turn this on to
+    # let it gate tier 3 decisions, at the cost of that latency on the first turn.
+    inline: bool = False
 
 
 @dataclass

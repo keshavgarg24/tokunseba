@@ -152,3 +152,26 @@ def test_run_wrapper_compresses(home):
 
 def test_run_wrapper_propagates_exit_code(home):
     assert run(["run", "--", "python", "-c", "import sys; sys.exit(3)"]).exit_code == 3
+
+
+def test_doctor_does_not_eat_bracketed_hints(home, tmp_path, monkeypatch):
+    """Rich treats [laya] as markup; the install hint must survive rendering."""
+    from tokunseba.detect import claude_code, codex, envfile, registry
+    monkeypatch.setattr(registry.shutil, "which", lambda _n: None)
+    monkeypatch.setattr(claude_code, "SETTINGS", tmp_path / "s.json")
+    monkeypatch.setattr(codex, "CONFIG", tmp_path / "c.toml")
+    monkeypatch.setattr(envfile, "PROFILE_OVERRIDE", tmp_path / "profile")
+    monkeypatch.setattr(registry, "_have", lambda _m: False)
+    out = run(["doctor"]).output.replace("\n", "").replace(" ", "")
+    assert "tokunseba[laya]" in out and "tokunseba[mcp]" in out
+
+
+def test_stats_survives_a_bracketed_tool_name(home):
+    led = _seed(home)
+    led.record_request(RequestRecord(
+        id="r2", ts=__import__("time").time(), session_id="s2", tool_id="[odd]tool",
+        project="/p", provider="anthropic", model="m", stream=False, input_tokens=1,
+        cache_read=0, cache_write=0, output_tokens=1, est_tokens_before=1,
+        est_tokens_after=1, cost_usd=0.0, counterfactual_usd=0.0, arm="", status=200,
+        latency_ms=1, body_path=""))
+    assert "[odd]tool" in run(["stats"]).output.replace("\n", "")

@@ -6,6 +6,7 @@ The response body is always streamed back byte for byte.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import random
 import time
@@ -90,6 +91,7 @@ class Proxy:
         self.judge = build_chain(cfg, ledger)
         self.pipeline = Pipeline(cfg, ledger, self.handles, self.est,
                                  pre_store=lambda t: not secrets.has_secret(t))
+        self._background: set = set()
         self.bodies = home() / "bodies"
         if cfg.store_bodies:
             self.bodies.mkdir(parents=True, exist_ok=True)
@@ -113,7 +115,12 @@ class Proxy:
         return self.ledger.recent_cwd(ctx.tool_id)
 
     async def _signals(self, norm, ctx) -> dict:
-        """Ask the local judge about the newest user message. Analytics always, gating only in tier 3."""
+        """Ask the local judge about the newest user message.
+
+        Measured at roughly 1.5 s per call with Laya on an M-series laptop, so this only ever
+        runs in the request path when the user has opted in via judge.inline. Otherwise it is
+        scheduled afterwards and its answers only reach the ledger.
+        """
         text = norm.last_user_text()
         if not text:
             return {}
@@ -132,7 +139,30 @@ class Proxy:
             self.ledger.record_event("route_signal", sig, ctx.session_id, ctx.request_id)
         return sig
 
+    def _schedule(self, coro) -> None:
+        """Run judge work after the response is on its way. Failures only reach the ledger."""
+        async def guarded():
+            try:
+                await coro
+            except Exception as exc:  # noqa: BLE001
+                self.ledger.record_event("judge_error", {"error": str(exc)[:200]})
+        try:
+            task = asyncio.create_task(guarded())
+            self._background.add(task)
+            task.add_done_callback(self._background.discard)
+        except RuntimeError:
+            pass
+
+    async def _corroborate_later(self, text: str, position: str, session_id: str,
+                                 request_id: str) -> None:
+        agreed = await injection.corroborate(self.judge, text)
+        if agreed is not None:
+            self.ledger.record_event("injection_corroborated",
+                                     {"position": position, "agreed": agreed},
+                                     session_id, request_id)
+
     async def _guards(self, norm, ctx) -> None:
+        """Runs on every request, so everything here is a regex and stays sub-millisecond."""
         for i in range(ctx.delta_start, len(norm.messages)):
             for blk in norm.messages[i].blocks:
                 if not blk.text:
@@ -150,18 +180,13 @@ class Proxy:
                                                  ctx.session_id, ctx.request_id)
                 if blk.kind == "tool_result":
                     hits = injection.regex_suspicious(blk.text)
-                    suspicious = bool(hits)
-                    if not suspicious and "laya" in self.judge.available_names():
-                        try:
-                            ans = await injection.screen(self.judge, blk.text)
-                            suspicious = (self.judge.decide(ans, "prompt_injection", True) is True
-                                          or self.judge.decide(ans, "jailbreak", True) is True)
-                        except Exception:
-                            suspicious = False
-                    if suspicious:
+                    if hits:
                         self.ledger.record_event("injection_suspected",
                                                  {"position": str(blk.path), "signals": hits},
                                                  ctx.session_id, ctx.request_id)
+                        if "laya" in self.judge.available_names():
+                            self._schedule(self._corroborate_later(
+                                blk.text, str(blk.path), ctx.session_id, ctx.request_id))
                         if self.cfg.tier3 and self.cfg.tier3_opts.annotate_injections:
                             json_set(norm.raw, blk.path, injection.ANNOTATION + "\n" + blk.text)
 
@@ -212,18 +237,20 @@ class Proxy:
             self.ledger.record_event("cache_injected", {"n": ctx.injected}, ctx.session_id, ctx.request_id)
             cur_bp = guardian.breakpoints(adapter.parse(body))
 
-        # tier 3
+        # tier 3. Gating needs the judge's answer before the request goes out, which costs
+        # real latency, so it only happens when the user has asked for it.
         reroute = None
-        if self.cfg.tier3 and ctx.arm == "treatment":
+        if self.cfg.tier3 and ctx.arm == "treatment" and self.cfg.judge.inline:
             ctx.signals = await self._signals(norm, ctx)
             if tier3_effort.apply(norm, body, ctx.signals, self.cfg):
-                self.ledger.record_event("effort_set", {"effort": "low"}, ctx.session_id, ctx.request_id)
+                self.ledger.record_event("effort_set", {"effort": "low"},
+                                         ctx.session_id, ctx.request_id)
             reroute, reason = tier3_routing.apply(norm, body, ctx.signals, self.cfg)
             if reason in ("model_routed", "local_routed"):
                 self.ledger.record_event(reason, {"model": body.get("model")},
                                          ctx.session_id, ctx.request_id)
         elif self.cfg.tier3:
-            ctx.signals = await self._signals(norm, ctx)
+            self._schedule(self._signals(norm, ctx))
 
         if norm.provider == "ollama":
             await self._check_local_fit(norm, body, ctx)

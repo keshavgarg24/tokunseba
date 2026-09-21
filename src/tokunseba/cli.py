@@ -8,6 +8,7 @@ from pathlib import Path
 
 import click
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from . import __version__, config
@@ -60,7 +61,7 @@ def init(no_service: bool, no_hooks: bool) -> None:
 
     console.print("[bold]Configuring tools[/bold]")
     for line in registry.apply_all(cfg, hooks=not no_hooks):
-        console.print(f"  {line}")
+        console.print(f"  {escape(str(line))}")
 
     if not no_service:
         path, state = service.install()
@@ -78,10 +79,10 @@ def _print_tools(tools) -> None:
     t.add_column("routed")
     t.add_column("note", overflow="fold")
     for s in tools:
-        t.add_row(s.name,
+        t.add_row(escape(s.name),
                   "yes" if s.installed else "-",
                   "[green]yes[/green]" if s.configured else ("[yellow]no[/yellow]" if s.installed else "-"),
-                  s.note or s.config_path)
+                  escape(s.note or s.config_path))
     console.print(t)
 
 
@@ -90,7 +91,7 @@ def on() -> None:
     """Re-apply the proxy configuration to every tool."""
     from .detect import registry
     for line in registry.apply_all(config.load()):
-        console.print(f"  {line}")
+        console.print(f"  {escape(str(line))}")
     console.print("[green]tokunseba is in the path again.[/green]")
 
 
@@ -99,7 +100,7 @@ def off() -> None:
     """Restore every tool's original configuration. The proxy stops being used immediately."""
     from .detect import registry
     for line in registry.restore_all():
-        console.print(f"  {line}")
+        console.print(f"  {escape(str(line))}")
     console.print("[green]Restored. Open a new shell to clear the exported variables.[/green]")
 
 
@@ -166,7 +167,8 @@ def doctor() -> None:
     t.add_column("check")
     t.add_column("detail", overflow="fold")
     for c in checks:
-        t.add_row("[green]ok[/green]" if c.ok else "[yellow]--[/yellow]", c.name, c.detail)
+        t.add_row("[green]ok[/green]" if c.ok else "[yellow]--[/yellow]",
+                  escape(c.name), escape(c.detail))
     console.print(t)
 
 
@@ -176,8 +178,8 @@ def uninstall() -> None:
     from . import service
     from .detect import registry
     for line in registry.restore_all():
-        console.print(f"  {line}")
-    console.print(service.uninstall())
+        console.print(f"  {escape(str(line))}")
+    console.print(escape(service.uninstall()))
     console.print(f"Data left in place at {config.home()} — delete it by hand if you want it gone.")
 
 
@@ -213,7 +215,8 @@ def stats(since: str, project: str | None, ab: bool, as_json: bool) -> None:
         t.add_column("saved", justify="right")
         t.add_column("spent", justify="right")
         for r in s["by_tool"]:
-            t.add_row(r["tool"], str(r["requests"]), _k(r["tokens_saved"]), f"${r['usd']:.2f}")
+            t.add_row(escape(r["tool"]), str(r["requests"]), _k(r["tokens_saved"]),
+                      f"${r['usd']:.2f}")
         console.print(t)
 
     if s["events"]:
@@ -221,7 +224,7 @@ def stats(since: str, project: str | None, ab: bool, as_json: bool) -> None:
         e.add_column("signal")
         e.add_column("count", justify="right")
         for kind, count in s["events"].items():
-            e.add_row(kind, str(count))
+            e.add_row(escape(kind), str(count))
         console.print(e)
 
     if ab:
@@ -265,7 +268,7 @@ def explain(request_id: str) -> None:
         except (ValueError, TypeError, KeyError):
             pass
     for r in rows:
-        console.print(f"\n[bold]{r['position']}[/bold]  {r['kind']}  "
+        console.print(f"\n[bold]{escape(r['position'])}[/bold]  {escape(r['kind'])}  "
                       f"{r['orig_tokens']} → {r['new_tokens']} tokens"
                       + (f"  handle {r['handle']}" if r["handle"] else ""))
         base_sha = r["orig_sha"].split("@")[0]
@@ -273,10 +276,10 @@ def explain(request_id: str) -> None:
         if orig:
             console.print("[dim]original:[/dim]")
             for line in orig.splitlines()[:3]:
-                console.print(f"  {line[:150]}")
+                console.print(f"  {escape(line[:150])}")
         console.print("[dim]sent:[/dim]")
         for line in (r["transformed"] or "").splitlines()[:3]:
-            console.print(f"  {line[:150]}")
+            console.print(f"  {escape(line[:150])}")
 
 
 @main.command()
