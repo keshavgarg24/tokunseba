@@ -78,8 +78,11 @@ def breakpoints(norm: NormalizedRequest) -> list[tuple[str, str]]:
 
 
 def _cause(prev_text: str, cur_text: str) -> str:
+    if not prev_text:
+        # the previous text was not retained, so the cause cannot be attributed
+        return "unknown"
     if prev_text == cur_text:
-        return "content_changed"
+        return "unknown"
     if TIMESTAMP.search(prev_text) or TIMESTAMP.search(cur_text):
         p = TIMESTAMP.sub("<T>", prev_text)
         c = TIMESTAMP.sub("<T>", cur_text)

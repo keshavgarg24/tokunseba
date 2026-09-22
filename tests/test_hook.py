@@ -71,7 +71,7 @@ def test_pre_tool_use_bash_prints_nothing_when_rewrite_disabled(
     home: Path, posts: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    config.save(config.Config(rewrite_bash=False))
+    config.save(config.Config())
     _feed(
         monkeypatch,
         {
@@ -97,10 +97,9 @@ def test_pre_tool_use_bash_prints_nothing_even_when_rewrite_enabled(
     See the claude_code_hook module docstring: the hooks documentation (checked
     2026-09-22) only accepts ``updatedInput`` alongside ``permissionDecision:
     "allow"``, which bypasses the user's permission prompt. tokunseba therefore
-    declines to rewrite at all, and ``rewrite_bash`` has no effect here.
+    declines to rewrite at all, so there is no setting that could enable it.
     """
-    config.save(config.Config(rewrite_bash=True))
-    assert config.load().rewrite_bash is True
+    config.save(config.Config())
     assert claude_code_hook.BASH_REWRITE_SUPPORTED is False
 
     _feed(
@@ -175,10 +174,14 @@ def test_build_server_either_builds_or_needs_the_extra(home: Path) -> None:
 def test_main_returns_2_when_mcp_is_missing(
     home: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # A None entry in sys.modules makes any `import mcp...` raise ImportError.
-    monkeypatch.setitem(__import__("sys").modules, "mcp", None)
+    # A None entry in sys.modules makes `import mcp` raise ImportError, but a submodule
+    # already imported elsewhere in the run would still resolve directly, so blank those too.
+    import sys
+    for name in [m for m in list(sys.modules) if m == "mcp" or m.startswith("mcp.")]:
+        monkeypatch.setitem(sys.modules, name, None)
+    monkeypatch.setitem(sys.modules, "mcp", None)
 
     assert mcp_server.main() == 2
     captured = capsys.readouterr()
-    assert captured.err.strip() == 'install with: uv tool install "tokunseba[mcp]"'
+    assert captured.err.strip() == mcp_server.INSTALL_HINT
     assert captured.out == ""

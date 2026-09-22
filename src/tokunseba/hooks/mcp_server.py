@@ -1,11 +1,11 @@
-"""MCP server exposing a single tool: expand a tokunseba handle back to text.
+"""MCP server exposing `expand`, for agents that have no shell.
 
-Whenever tokunseba hides output behind a handle it leaves the handle in view.
-An agent speaking MCP can call ``expand`` to get the omitted text back without
-shelling out. The ``mcp`` dependency is optional, so it is imported lazily and
-this module stays importable without the extra installed.
+Nothing tokunseba shortens is ever lost; it is replaced by a handle. An agent with a shell
+runs `tokunseba expand <handle>`. An agent without one calls this tool instead.
+
+Supports both MCP SDK generations: 2.x renamed FastMCP to MCPServer, and an agent running
+an older host may still have 1.x installed.
 """
-
 from __future__ import annotations
 
 import sys
@@ -13,37 +13,45 @@ import sys
 from ..config import home
 from ..transform.handles import HandleStore
 
-__all__ = ["build_server", "main"]
+INSTALL_HINT = "install with: uv tool install 'tokunseba[mcp]'"
+DESCRIPTION = (
+    "Return the full original text that tokunseba replaced with a handle. "
+    "Use it whenever you see a line like "
+    "'[tokunseba: N lines omitted. Full output: run `tokunseba expand h_...`]' "
+    "and you need the part that was left out."
+)
 
-_INSTALL_HINT = 'install with: uv tool install "tokunseba[mcp]"'
+
+def expand_handle(handle: str) -> str:
+    text = HandleStore(home() / "blobs").get(handle)
+    return text if text is not None else f"unknown handle {handle}"
+
+
+def _server_class():
+    """MCP 2.x first, then the 1.x name."""
+    try:
+        from mcp.server.mcpserver import MCPServer
+        return MCPServer
+    except ImportError:
+        from mcp.server.fastmcp import FastMCP
+        return FastMCP
 
 
 def build_server():
-    """Create the FastMCP server. Raises ImportError without the ``mcp`` extra."""
-    from mcp.server.fastmcp import FastMCP
+    server = _server_class()("tokunseba")
 
-    server = FastMCP("tokunseba")
-
-    @server.tool()
+    @server.tool(description=DESCRIPTION)
     def expand(handle: str) -> str:
-        """Return the full original text that tokunseba replaced with this handle."""
-        text = HandleStore(home() / "blobs").get(handle)
-        return text if text is not None else f"unknown handle {handle}"
+        return expand_handle(handle)
 
     return server
 
 
 def main() -> int:
-    """Run the MCP server on stdio. Returns 2 if the ``mcp`` extra is missing."""
     try:
         server = build_server()
     except ImportError:
-        print(_INSTALL_HINT, file=sys.stderr)
+        print(INSTALL_HINT, file=sys.stderr)
         return 2
-
     server.run()
     return 0
-
-
-if __name__ == "__main__":  # pragma: no cover
-    raise SystemExit(main())

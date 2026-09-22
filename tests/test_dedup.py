@@ -45,19 +45,21 @@ def test_path_of_reads_tool_input():
     assert dedup.path_of(n, block) == "/x.py"
 
 
-def test_reference_text_mentions_handle_and_index():
-    t = dedup.reference_text(4, "h_abc123456789")
-    assert "message 4" in t and "expand h_abc123456789" in t
+def test_reference_text_points_at_a_handle_not_a_position():
+    """Message numbers shift when a harness compacts, which would change these bytes."""
+    t = dedup.reference_text("h_abc123456789")
+    assert "expand h_abc123456789" in t
+    assert "message" not in t
 
 
 def test_make_diff_used_when_small():
     earlier = "\n".join(f"line {i}" for i in range(200))
     current = earlier.replace("line 5", "line FIVE")
-    d = dedup.make_diff(earlier, current, "/a.py", 1, "h_x")
-    assert d and "line FIVE" in d and "changed since message 1" in d
+    d = dedup.make_diff(earlier, current, "/a.py", "h_x")
+    assert d and "line FIVE" in d and "changed since it was last read" in d
 
 
 def test_make_diff_rejected_when_large():
     earlier = "\n".join(f"a{i}" for i in range(50))
     current = "\n".join(f"b{i}" for i in range(50))
-    assert dedup.make_diff(earlier, current, "/a.py", 1, "h_x") is None
+    assert dedup.make_diff(earlier, current, "/a.py", "h_x") is None

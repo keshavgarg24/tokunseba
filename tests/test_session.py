@@ -43,3 +43,26 @@ def test_eviction_and_gaps():
 def test_empty_chain_is_new():
     idx = SessionIndex()
     assert idx.match([]).is_new
+
+
+def test_interleaved_commits_degrade_safely():
+    """Two in-flight requests in one conversation may commit out of order.
+
+    The worst outcome must be a missed compression, never a rewritten history or a
+    corrupted chain.
+    """
+    idx = SessionIndex()
+    m = idx.match(["a"])
+    idx.commit(m.session_id, "r1", ["a", "b", "c"])       # the later request lands first
+    idx.commit(m.session_id, "r2", ["a", "b"])            # the earlier one overwrites
+    later = idx.match(["a", "b", "c", "d"])
+    assert later.session_id == m.session_id
+    assert later.prefix_len <= 4                           # never claims more than exists
+    assert idx.get(m.session_id).chain == ["a", "b"]       # state stays internally consistent
+
+
+def test_prefix_len_never_exceeds_the_request():
+    idx = SessionIndex()
+    idx.commit("s", "r", ["a", "b", "c", "d", "e"])
+    m = idx.match(["a", "b"])
+    assert m.prefix_len <= 2

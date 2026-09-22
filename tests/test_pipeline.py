@@ -54,7 +54,7 @@ def test_dedup_second_read_becomes_reference(pipe):
     big = "\n".join(f"line {i}" for i in range(400))
     body = build([("Read", "/a.py", big), ("Read", "/b.py", big)])
     res = p.apply(A.parse(body), body, 0, "s", "r")
-    assert "identical to the tool result in message 1" in text_at(res.body, 3)
+    assert "identical to an earlier tool result" in text_at(res.body, 3)
     assert res.tokens_after < res.tokens_before
 
 
@@ -65,7 +65,7 @@ def test_reread_becomes_a_diff(pipe):
     body = build([("Read", "/a.py", v1), ("Read", "/a.py", v2)])
     res = p.apply(A.parse(body), body, 0, "s", "r")
     out = text_at(res.body, 3)
-    assert "changed since message 1" in out and "line SEVEN" in out
+    assert "changed since it was last read" in out and "line SEVEN" in out
     assert len(out) < len(v2) / 2
 
 
@@ -90,7 +90,7 @@ def test_materialize_rescues_a_dangling_reference(pipe):
     """A stored pointer is only valid while its target is still in the request."""
     p, _cfg, led = pipe
     from tokunseba.ledger import TransformRow
-    row = TransformRow("k", "dedup_ref", "[tokunseba: identical to the tool result in message 1 (h_x)]",
+    row = TransformRow("k", "dedup_ref", "[tokunseba: identical to an earlier tool result (h_x)]",
                        100, 5, "h_x", "deadbeef")
     body = build([("Bash", None, "\x1b[31mred\x1b[0m")])
     norm = A.parse(body)
@@ -201,3 +201,57 @@ def test_non_tool_result_blocks_are_never_touched(pipe):
     before = json.dumps(body)
     p.apply(A.parse(body), body, 0, "s", "r")
     assert json.dumps(body) == before
+
+
+def test_token_heavy_single_line_is_cut_not_duplicated(pipe):
+    """Truncation triggered by the token budget must still shorten the text.
+
+    A payload can blow the token budget while having far fewer lines than the
+    line budget -- one enormous line of JSON or minified output is the usual
+    case. Slicing a head and a tail out of it by line index returns the whole
+    thing twice.
+    """
+    p, cfg, _led = pipe
+    cfg.thresholds.truncate_lines = 300
+    cfg.thresholds.truncate_tokens = 50
+    original = "x" * 40000
+    body = build([("Bash", None, original)])
+    res = p.apply(A.parse(body), body, 0, "s", "r")
+    out = text_at(res.body, 1)
+    assert out.count(original) == 0, "the whole payload was re-emitted verbatim"
+    assert len(out) < len(original)
+    assert res.tokens_after < res.tokens_before
+    assert "tokunseba expand h_" in out
+
+
+def test_handle_holds_the_original_bytes_not_the_canonical_ones(pipe, home):
+    """`expand` has to return what the tool actually produced.
+
+    Canonicalization drops whatever a carriage return overwrote. That is a fair
+    bet for a progress bar and a wrong one for CR-delimited data, so the bytes
+    it drops must still be reachable through the handle.
+    """
+    p, cfg, _led = pipe
+    cfg.thresholds.truncate_lines = 20
+    cfg.thresholds.truncate_tokens = 50
+    original = "COLUMN A\rCOLUMN B\rvisible\n" + "\n".join(f"u{i} = value" for i in range(500))
+    body = build([("Bash", None, original)])
+    res = p.apply(A.parse(body), body, 0, "s", "r")
+    assert HandleStore(home / "blobs").get(res.applied[0].handle) == original
+
+
+def test_reference_survives_history_compaction(pipe):
+    """A harness that compacts history renumbers messages. The same bytes must still
+    produce the same replacement, or the whole cached prefix is paid for again."""
+    p, _cfg, _led = pipe
+    big = "\n".join(f"line {i}" for i in range(400))
+    before = build([("Read", "/a.py", big), ("Read", "/b.py", "filler " * 500),
+                    ("Read", "/c.py", big)])
+    r1 = p.apply(A.parse(before), before, 0, "s", "r1")
+    original = text_at(r1.body, 5)
+    assert "identical to an earlier tool result" in original
+
+    # the middle exchange is compacted away and everything after it shifts down
+    after = build([("Read", "/a.py", big), ("Read", "/c.py", big)])
+    r2 = p.apply(A.parse(after), after, 0, "s", "r2")
+    assert text_at(r2.body, 3) == original, "renumbering produced a different replacement"

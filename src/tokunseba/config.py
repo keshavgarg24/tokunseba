@@ -82,7 +82,6 @@ class Config:
     port: int = 7777
     store_bodies: bool = True
     cache_ttl: str = ""
-    rewrite_bash: bool = False
     lossless: bool = True
     reach_preserving: bool = True
     tier3: bool = False
@@ -117,7 +116,6 @@ def load(path: Path | None = None) -> Config:
     cfg.port = int(proxy.get("port", cfg.port))
     cfg.store_bodies = bool(proxy.get("store_bodies", cfg.store_bodies))
     cfg.cache_ttl = str(proxy.get("cache_ttl", cfg.cache_ttl))
-    cfg.rewrite_bash = bool(proxy.get("rewrite_bash", cfg.rewrite_bash))
     tiers = raw.get("tiers", {})
     cfg.lossless = bool(tiers.get("lossless", True))
     cfg.reach_preserving = bool(tiers.get("reach_preserving", True))
@@ -142,7 +140,6 @@ def save(cfg: Config, path: Path | None = None) -> Path:
             "port": cfg.port,
             "store_bodies": cfg.store_bodies,
             "cache_ttl": cfg.cache_ttl,
-            "rewrite_bash": cfg.rewrite_bash,
         },
         "tiers": {
             "lossless": cfg.lossless,

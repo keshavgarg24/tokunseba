@@ -29,7 +29,7 @@ refuse a destructive one. Saving tokens is not worth that trade, so the rewrite
 is deliberately not implemented: on ``PreToolUse`` this hook prints nothing and
 exits 0, leaving the permission flow untouched.
 
-``cfg.rewrite_bash`` consequently has no effect here. To get the same savings
+There is consequently no setting to enable it. To get the same savings
 safely, invoke ``tokunseba run -- <command>`` explicitly, or route the tool
 results through the proxy.
 """

@@ -1,6 +1,7 @@
 """Match each request to a conversation by hashing its message prefix, so only the delta is ever touched."""
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass, field
 
@@ -34,6 +35,22 @@ class SessionIndex:
         self.max_chains = max_chains
         self.sessions: dict[str, SessionState] = {}
         self._order: list[str] = []
+        self._locks: dict[str, asyncio.Lock] = {}
+
+    def lock(self, session_id: str) -> asyncio.Lock:
+        """Held across match and commit.
+
+        Two requests from one conversation can be in flight at once, and several awaits sit
+        between reading the session and writing it back. Without this the later commit wins
+        and the token accounting it feeds goes wrong.
+        """
+        lock = self._locks.get(session_id)
+        if lock is None:
+            lock = self._locks[session_id] = asyncio.Lock()
+            if len(self._locks) > self.max_chains * 2:
+                for stale in [k for k in self._locks if k not in self.sessions][:self.max_chains]:
+                    self._locks.pop(stale, None)
+        return lock
 
     def match(self, chain: list[str]) -> Match:
         best_id, best_len = "", -1

@@ -53,8 +53,14 @@ class Pipeline:
             return "", False
         return self.handles.put(text), True
 
-    def _footer(self, text: str, kept: str, provider: str, model: str) -> str:
-        handle, ok = self._store(text)
+    def _footer(self, orig: str, text: str, kept: str, provider: str, model: str) -> str:
+        """Describe what `kept` left out of `text`, behind a handle holding `orig`.
+
+        The handle stores the untouched original, not the canonicalized `text`:
+        canonicalization drops whatever a carriage return overwrote, and that is
+        only a safe bet as long as the dropped bytes stay reachable.
+        """
+        handle, ok = self._store(orig)
         if not ok:
             return HandleStore.blocked_footer()
         omitted_lines = max(text.count("\n") - kept.count("\n"), 0)
@@ -88,9 +94,9 @@ class Pipeline:
         # 3. an identical earlier result needs only a pointer, but only when the pointer
         #    is genuinely cheaper than the thing it replaces
         if ref:
-            idx, ref_sha = ref
+            _idx, ref_sha = ref
             handle, ok = self._store(orig)
-            rtext = dedup.reference_text(idx, handle if ok else "unavailable")
+            rtext = dedup.reference_text(handle if ok else "unavailable")
             rtokens = self.est.count(rtext, provider, model)
             if rtokens < self.est.count(text, provider, model):
                 return TransformRow(key, "dedup_ref", rtext, orig_tokens, rtokens,
@@ -98,9 +104,9 @@ class Pipeline:
 
         # 4. a re-read after an edit needs only the diff
         if rr and path:
-            idx, ref_sha, earlier = rr
+            _idx, ref_sha, earlier = rr
             handle, ok = self._store(orig)
-            d = dedup.make_diff(earlier, text, path, idx, handle if ok else "unavailable")
+            d = dedup.make_diff(earlier, text, path, handle if ok else "unavailable")
             if d:
                 return TransformRow(key, "diff_ref", d, orig_tokens,
                                     self.est.count(d, provider, model), handle if ok else "", ref_sha)
@@ -118,31 +124,57 @@ class Pipeline:
             kind_label, _conf = summarize.detect_type(text, tool_name, command)
             kept, omitted = summarize.summarize(kind_label, text)
             if omitted > 0:
-                kept = kept.rstrip("\n") + "\n" + self._footer(text, kept, provider, model)
+                kept = kept.rstrip("\n") + "\n" + self._footer(orig, text, kept, provider, model)
                 return TransformRow(key, f"summary:{kind_label}", kept, orig_tokens,
-                                    self.est.count(kept, provider, model), self._handle_of(text), "")
+                                    self.est.count(kept, provider, model), self._handle_of(orig), "")
 
-        # 6. a cheaper encoding, only if the tokenizer agrees it is cheaper
+        # 6. a cheaper encoding, only if the tokenizer agrees it is cheaper.
+        #    A table loses JSON types: null and "" both render empty, true and "true" both
+        #    render true. So it carries a handle like every other shortening branch, and the
+        #    saving must still clear the bar after paying for that line.
         encoded, ekind = encodings.best(text, lambda s: self.est.count(s, provider, model))
         if ekind != "none":
-            return TransformRow(key, f"encoding:{ekind}", encoded, orig_tokens,
-                                self.est.count(encoded, provider, model), "", "")
+            handle, ok = self._store(orig)
+            pointer = (f"[tokunseba: exact JSON: run `tokunseba expand {handle}`]"
+                       if ok else HandleStore.blocked_footer())
+            encoded = encoded + "\n" + pointer
+            new_tokens = self.est.count(encoded, provider, model)
+            if new_tokens < self.est.count(text, provider, model):
+                return TransformRow(key, f"encoding:{ekind}", encoded, orig_tokens,
+                                    new_tokens, handle if ok else "", "")
 
         # 7. last resort: keep the head and the tail, defer the middle
         max_lines, max_tokens = self._truncate_limit(provider)
         cur_tokens = self.est.count(text, provider, model)
         lines = text.split("\n")
         if reach and (cur_tokens > max_tokens or len(lines) > max_lines):
-            head_n = int(max_lines * 0.6)
-            tail_n = max_lines - head_n
-            kept = "\n".join(lines[:head_n]) + "\n{FOOTER}\n" + "\n".join(lines[-tail_n:])
-            footer = self._footer(text, kept.replace("{FOOTER}", ""), provider, model)
+            kept = self._head_and_tail(text, lines, max_lines, max_tokens, cur_tokens)
+            footer = self._footer(orig, text, kept.replace("{FOOTER}", ""), provider, model)
             kept = kept.replace("{FOOTER}", footer)
             return TransformRow(key, "truncate", kept, orig_tokens,
-                                self.est.count(kept, provider, model), self._handle_of(text), "")
+                                self.est.count(kept, provider, model), self._handle_of(orig), "")
 
         kind = "canonical" if text != orig else "passthrough"
         return TransformRow(key, kind, text, orig_tokens, self.est.count(text, provider, model), "", "")
+
+    @staticmethod
+    def _head_and_tail(text: str, lines: list[str], max_lines: int,
+                       max_tokens: int, cur_tokens: int) -> str:
+        """Keep the head and the tail of `text` with a `{FOOTER}` slot between them.
+
+        Line indices only work when there are more lines than the budget. One
+        enormous line can blow the token budget on its own, and slicing that by
+        line index returns the whole payload twice, so it is cut by character
+        count scaled to the measured tokens-per-character of this very text.
+        """
+        if len(lines) > max_lines:
+            head_n = int(max_lines * 0.6)
+            return ("\n".join(lines[:head_n]) + "\n{FOOTER}\n"
+                    + "\n".join(lines[max(head_n, len(lines) - (max_lines - head_n)):]))
+        budget = max(int(len(text) * max_tokens / max(cur_tokens, 1)), 1)
+        head_c = int(budget * 0.6)
+        tail_c = budget - head_c
+        return text[:head_c] + "\n{FOOTER}\n" + (text[-tail_c:] if tail_c > 0 else "")
 
     def _handle_of(self, text: str) -> str:
         if not self.pre_store(text):
@@ -161,13 +193,15 @@ class Pipeline:
     def _key(self, sha: str, ref, rr) -> str:
         """Content addresses the transform, but a reference also depends on what it points at.
 
-        Including the referenced position keeps the key stable across turns (history is
-        append-only) while stopping two copies of the same bytes from colliding.
+        The key names the referenced *content*, never its position. Position would be stable
+        only while history grows by appending; compaction renumbers messages, and the same
+        bytes would then key differently and get a second replacement, which is exactly the
+        cache break this table exists to prevent.
         """
         if ref:
-            return f"{sha}@same{ref[0]}"
+            return f"{sha}@same{ref[1][:12]}"
         if rr:
-            return f"{sha}@diff{rr[0]}"
+            return f"{sha}@diff{rr[1][:12]}"
         return sha
 
     def apply(self, norm: NormalizedRequest, body: dict, delta_start: int,
@@ -177,7 +211,9 @@ class Pipeline:
             return res
         for i, msg in enumerate(norm.messages):
             for blk in msg.blocks:
-                if blk.kind != "tool_result" or not blk.text:
+                # An adapter that hands back a non-string body (a list of content
+                # parts, say) must cost a transform, never the whole request.
+                if blk.kind != "tool_result" or not isinstance(blk.text, str) or not blk.text:
                     continue
                 orig = blk.text
                 sha = sha256_text(orig)

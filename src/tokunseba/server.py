@@ -61,6 +61,17 @@ class RequestContext:
     delta_chars: int = 0
     body_path: str = ""
     signals: dict = field(default_factory=dict)
+    annotate: list = field(default_factory=list)
+    _lock: object = None
+
+    async def enter_session_lock(self, lock) -> None:
+        await lock.acquire()
+        self._lock = lock
+
+    def release_session_lock(self) -> None:
+        if self._lock is not None:
+            self._lock.release()
+            self._lock = None
 
 
 def tool_id_from_headers(headers, prefix: str) -> str:
@@ -176,23 +187,48 @@ class Proxy:
                         blk.text = json_get(norm.raw, blk.path)
                         self.ledger.record_event("secret_redacted", {"kinds": kinds},
                                                  ctx.session_id, ctx.request_id)
-                if blk.kind == "tool_result":
+                if blk.kind == "tool_result" and injection.regex_suspicious(blk.text):
                     hits = injection.regex_suspicious(blk.text)
-                    if hits:
-                        self.ledger.record_event("injection_suspected",
-                                                 {"position": str(blk.path), "signals": hits},
-                                                 ctx.session_id, ctx.request_id)
-                        if "laya" in self.judge.available_names():
-                            self._schedule(self._corroborate_later(
-                                blk.text, str(blk.path), ctx.session_id, ctx.request_id))
-                        if self.cfg.tier3 and self.cfg.tier3_opts.annotate_injections:
-                            json_set(norm.raw, blk.path, injection.ANNOTATION + "\n" + blk.text)
+                    self.ledger.record_event("injection_suspected",
+                                             {"position": str(blk.path), "signals": hits},
+                                             ctx.session_id, ctx.request_id)
+                    if "laya" in self.judge.available_names():
+                        self._schedule(self._corroborate_later(
+                            blk.text, str(blk.path), ctx.session_id, ctx.request_id))
+
+    def _plan_annotations(self, norm, ctx: RequestContext) -> None:
+        """Decide which tool results get the data-not-commands warning.
+
+        This looks at every message, not just the delta, on purpose. The warning is a
+        deterministic function of the content, so re-deriving it for a block that has
+        become history reproduces the identical bytes and keeps the cached prefix intact.
+        Deciding only for new blocks would send the same block annotated on one turn and
+        bare on the next, which is exactly the drift this tool exists to prevent.
+        """
+        if not (self.cfg.tier3 and self.cfg.tier3_opts.annotate_injections):
+            return
+        for msg in norm.messages:
+            for blk in msg.blocks:
+                if blk.kind == "tool_result" and blk.text and injection.regex_suspicious(blk.text):
+                    ctx.annotate.append(blk.path)
+
+    def _annotate(self, body: dict, ctx: RequestContext) -> None:
+        """Prefix each flagged tool result with the data-not-commands warning."""
+        for path in ctx.annotate:
+            try:
+                current = json_get(body, path)
+            except (KeyError, IndexError, TypeError):
+                continue
+            if isinstance(current, str) and injection.ANNOTATION not in current:
+                json_set(body, path, injection.ANNOTATION + "\n" + current)
 
     # ---------- the before-forward chain ----------
     async def before(self, adapter, norm, body: dict, ctx: RequestContext) -> tuple[dict, str | None]:
         chain = norm.chain()
         match = self.sessions.match(chain)
         ctx.session_id = match.session_id
+        # from here to commit, this conversation is ours alone
+        await ctx.enter_session_lock(self.sessions.lock(match.session_id))
         ctx.delta_start = match.prefix_len
         st = self.sessions.get(match.session_id)
         ctx.turn_index = st.turns if st else 0
@@ -205,16 +241,27 @@ class Proxy:
         self.ledger.upsert_session(match.session_id, ctx.tool_id, ctx.project,
                                    norm.provider, norm.model, arm)
 
+        await self._guards(norm, ctx)
+        self._plan_annotations(norm, ctx)
+
+        # Stored after the guards, never before: with redaction on, writing first would put
+        # the credential in ~/.tokunseba/bodies in plain text, which is the same exposure
+        # the redaction exists to prevent. `explain` therefore shows the redacted original.
         if self.cfg.store_bodies:
             p = self.bodies / f"{ctx.request_id}.orig.json"
             p.write_text(json.dumps(body))
+            try:
+                p.chmod(0o600)
+            except OSError:
+                pass
             ctx.body_path = str(p)
-
-        await self._guards(norm, ctx)
 
         res = self.pipeline.apply(norm, body, ctx.delta_start, ctx.session_id, ctx.request_id)
         body = res.body
         ctx.est_before, ctx.est_after = res.tokens_before, res.tokens_after
+        if ctx.annotate:
+            self._annotate(body, ctx)
+            norm = adapter.parse(body)
 
         # Cache protection. Injection happens first and the drift check runs on the result,
         # because the request that matters is the one actually sent. Checking beforehand would
@@ -262,8 +309,16 @@ class Proxy:
         ctx.delta_chars = sum(len(b.text or "") for m in norm.messages[ctx.delta_start:] for b in m.blocks)
         self.sessions.commit(ctx.session_id, ctx.request_id, chain, cur_bp,
                              ctx.regions, ctx.region_text, 0, ctx.delta_chars)
+        # released here, not after the upstream call: holding it through the response would
+        # serialise every concurrent request in a conversation for no benefit
+        ctx.release_session_lock()
         if self.cfg.store_bodies:
-            (self.bodies / f"{ctx.request_id}.sent.json").write_text(json.dumps(body))
+            sent_path = self.bodies / f"{ctx.request_id}.sent.json"
+            sent_path.write_text(json.dumps(body))
+            try:
+                sent_path.chmod(0o600)
+            except OSError:
+                pass
         return body, reroute
 
     async def _check_local_fit(self, norm, body: dict, ctx: RequestContext) -> None:
@@ -328,6 +383,7 @@ def build_app(cfg: Config, ledger: Ledger, transport=None) -> Starlette:
             return JSONResponse({"error": f"unknown upstream '{prefix}'"}, status_code=404)
 
         raw = await request.body()
+        original_raw = raw
         ctx = RequestContext(request_id=uuid4().hex[:12],
                              tool_id=tool_id_from_headers(request.headers, prefix))
         adapter = proxy._adapter(up.kind, sub)
@@ -353,15 +409,27 @@ def build_app(cfg: Config, ledger: Ledger, transport=None) -> Starlette:
                     ledger.record_event("budget_exceeded", {"limit": cfg.budget.daily_usd})
                     if cfg.budget.hard_stop:
                         return JSONResponse(BUDGET_BODY, status_code=429)
-            body, reroute = await proxy.before(adapter, norm, body, ctx)
-            if reroute and reroute in cfg.upstreams:
-                target = cfg.upstreams[reroute]
-                sub = "/v1/chat/completions"
-            model_was = norm.model
-            norm = adapter.parse(body)
-            if not norm.model:
-                norm.model = model_was
-            raw = json.dumps(body).encode()
+            try:
+                body, reroute = await proxy.before(adapter, norm, body, ctx)
+                if reroute and reroute in cfg.upstreams:
+                    target = cfg.upstreams[reroute]
+                    sub = "/v1/chat/completions"
+                model_was = norm.model
+                norm = adapter.parse(body)
+                if not norm.model:
+                    norm.model = model_was
+                raw = json.dumps(body).encode()
+            except Exception as exc:  # noqa: BLE001
+                # Optimising a request is never worth failing it. Forward exactly what the
+                # client sent and make the bug loud in the ledger rather than in their editor.
+                ctx.release_session_lock()
+                ledger.record_event("passthrough_after_error",
+                                    {"error": f"{type(exc).__name__}: {exc}"[:300],
+                                     "model": norm.model},
+                                    ctx.session_id, ctx.request_id)
+                raw = original_raw
+                ctx.est_before = ctx.est_after = 0
+                ctx.injected = 0
 
         url = target.base_url.rstrip("/") + sub
         if request.url.query:

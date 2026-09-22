@@ -44,20 +44,22 @@ def find_reread(norm: NormalizedRequest, upto: int, block: Block) -> tuple[int, 
     return None
 
 
-def reference_text(index: int, handle: str) -> str:
-    return (f"[tokunseba: identical to the tool result in message {index} ({handle}). "
+def reference_text(handle: str) -> str:
+    """Deliberately free of message numbers: those shift when a harness compacts history,
+    and the replacement has to stay byte-identical for the life of the conversation."""
+    return ("[tokunseba: identical to an earlier tool result in this conversation. "
             f"Full output: run `tokunseba expand {handle}`]")
 
 
-def make_diff(earlier: str, current: str, path: str, index: int, handle: str) -> str | None:
+def make_diff(earlier: str, current: str, path: str, handle: str) -> str | None:
     """Return a unified diff, but only when it is meaningfully smaller than the full text."""
     diff = "\n".join(difflib.unified_diff(
         earlier.splitlines(), current.splitlines(),
-        fromfile=f"message {index}", tofile="now", lineterm="", n=2))
+        fromfile="previous read", tofile="now", lineterm="", n=2))
     if not diff or len(diff) >= len(current) * 0.6:
         return None
-    header = (f"[tokunseba: {path} changed since message {index}; unified diff against that version "
-              f"follows. Full file: run `tokunseba expand {handle}`]")
+    header = (f"[tokunseba: {path} changed since it was last read; a unified diff against that "
+              f"version follows. Full file: run `tokunseba expand {handle}`]")
     return header + "\n" + diff
 
 

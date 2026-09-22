@@ -36,8 +36,19 @@ class OpenAIAdapter:
             role = m.get("role", "")
             blocks: list[Block] = []
             if role == "tool":
-                blocks.append(Block("tool_result", m.get("content") or "", ("messages", i, "content"),
-                                    tool_use_id=m.get("tool_call_id")))
+                # `content` is a string or an array of content parts; the array
+                # form has to be walked part by part or the text of a tool result
+                # would be a list, not a string.
+                tool_content = m.get("content")
+                if isinstance(tool_content, list):
+                    for j, part in enumerate(tool_content):
+                        if isinstance(part, dict) and part.get("type") in ("text", "input_text", "output_text"):
+                            blocks.append(Block("tool_result", part.get("text", ""),
+                                                ("messages", i, "content", j, "text"),
+                                                tool_use_id=m.get("tool_call_id")))
+                else:
+                    blocks.append(Block("tool_result", tool_content or "", ("messages", i, "content"),
+                                        tool_use_id=m.get("tool_call_id")))
             else:
                 content = m.get("content")
                 if isinstance(content, str):

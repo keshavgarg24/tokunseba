@@ -5,10 +5,14 @@ A local proxy that cuts token usage for every AI coding tool on your machine, wi
 Install it once, run one command, and it sits between your tools and every model they talk to, cloud or local. It never sends anything anywhere except to the provider your tool was already using. There is no account, no telemetry, and nothing to pay for.
 
 ```bash
-uv tool install "tokunseba[laya,mcp]"
+git clone <this repo> tokunseba && cd tokunseba
+uv tool install ".[laya,mcp]"
 tokunseba init
 tokunseba doctor
 ```
+
+Not on PyPI yet, so install from the checkout. Drop `laya` to skip the 808 MB local judge,
+or `mcp` if every tool you use has a shell. The core needs neither.
 
 Then use your tools exactly as before. When you want to see what changed:
 
@@ -111,7 +115,10 @@ tokunseba uninstall            remove the service and restore everything
 - Binds `127.0.0.1` only.
 - API keys are forwarded from your tool's own headers and never stored.
 - No telemetry. The only outbound traffic is to the provider your tool chose.
-- Credentials are scanned for before anything is written to disk, so a detected secret never reaches a stored blob.
+- Credentials are scanned for before anything is written to disk, so a detected secret never
+  reaches a stored blob or a stored request body.
+- If tokunseba itself hits a bug, it forwards your request exactly as your tool sent it and
+  records the failure. Optimising a request is never worth failing it.
 - Bash command rewriting is deliberately not implemented. Claude Code's documented way to modify a tool's input also requires auto-approving it, which would bypass your own permission prompt. Use `tokunseba run` explicitly instead.
 
 ## What to expect
@@ -135,6 +142,12 @@ tokunseba config set tier3.effort_routing true
 tokunseba config set budget.daily_usd 5
 tokunseba config set judge.gate_threshold 0.85
 ```
+
+A note on concurrency: two requests from the same conversation in flight at once can leave
+one of them with a stale view of what was already sent. The consequence is that a new block
+is treated as history and skipped, which costs a little compression. It cannot corrupt a
+request or change an answer, because transformations are content-addressed and history is
+never rewritten.
 
 Storage lives in `~/.tokunseba`: the SQLite ledger, blobs behind handles, backups of every file touched, and logs.
 

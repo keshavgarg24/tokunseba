@@ -103,13 +103,13 @@ def test_tier3_off_means_no_routing():
     assert b["model"] == "claude-opus-5"
 
 
-async def test_control_arm_is_never_modified(client, proxy_app):
+async def test_control_arm_is_never_modified(client, proxy_app, monkeypatch):
     """Every tier 3 change must be measurable against an untouched control."""
-    app, cfg, led, up = proxy_app
+    _app, cfg, led, up = proxy_app
     cfg.tier3 = True
     cfg.tier3_opts.effort_routing = True
     import tokunseba.server as srv
-    srv.random.choice = lambda _opts: "control"
+    monkeypatch.setattr(srv.random, "choice", lambda _opts: "control")
     await client.post("/anthropic/v1/messages",
                       json={"model": "claude-opus-5", "max_tokens": 10, "system": "s" * 6000,
                             "messages": [{"role": "user", "content": "hi"}]},

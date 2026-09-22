@@ -194,16 +194,17 @@ Retention: blobs and request bodies older than 30 days are pruned by `tokunseba 
 - Never stores API keys. Auth headers are forwarded as received.
 - No telemetry. The only outbound traffic is to the upstream the tool already chose.
 - Secret scanner runs before any content is written to blobs.
-- Requests bodies are stored only when `store_bodies = true`, default true, because `explain` needs them. Documented and prunable.
+- Request bodies are stored only when `store_bodies = true`, default true, because `explain`
+  needs them. They are written at mode 0600 and only after the guards have run, so a redacted
+  credential never reaches disk. Prunable.
 
 ## 11. Config schema
 
 ```toml
 [proxy]
 port = 7777
-store_bodies = true
+store_bodies = true      # request bodies, written after redaction, mode 0600
 cache_ttl = ""
-rewrite_bash = false
 
 [tiers]
 lossless = true
@@ -278,4 +279,12 @@ Expected ranges from comparable tools, to be confirmed by the ledger: 20 to 40 p
 - No public Claude tokenizer. The estimator learns tokens-per-character per model from usage deltas between consecutive requests in a session.
 - Laya's small state budget means it sees the new user message and a short excerpt, never the
   conversation. It is therefore a poor judge of anything that needs history.
-- Compaction inside a harness rewrites history wholesale. The proxy treats it as a new session, and the frozen table keeps transforms consistent across it.
+- Compaction inside a harness rewrites history wholesale and renumbers messages. The proxy
+  treats it as a new session. Transforms stay consistent because every key names content, never
+  a position, and the replacement text carries no message numbers either. A test exercises a
+  compacted conversation and asserts the bytes are unchanged.
+- Two concurrent requests in one conversation are serialised across match and commit by a
+  per-session lock, released before the upstream call so the response is never serialised.
+- An internal error anywhere between parsing and forwarding degrades to forwarding exactly what
+  the client sent, recorded as `passthrough_after_error`. Optimising a request is never worth
+  failing it.

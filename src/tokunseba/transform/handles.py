@@ -29,7 +29,9 @@ class HandleStore:
         handle = f"h_{sha[:12]}"
         blob = self.dir / sha
         if not blob.exists():
-            blob.write_text(text)
+            # Bytes, not text: text mode translates newlines on the way back in,
+            # so a payload containing \r would not survive the round trip.
+            blob.write_bytes(text.encode("utf-8"))
             try:
                 blob.chmod(0o600)
             except OSError:
@@ -49,7 +51,7 @@ class HandleStore:
         if not sha:
             return None
         blob = self.dir / sha
-        return blob.read_text() if blob.exists() else None
+        return blob.read_bytes().decode("utf-8") if blob.exists() else None
 
     def prune(self, live_handles: set[str]) -> int:
         idx = self._index()
