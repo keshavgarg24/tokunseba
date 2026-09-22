@@ -11,7 +11,6 @@ import json
 import random
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from uuid import uuid4
 
 from starlette.applications import Starlette
@@ -56,7 +55,6 @@ class RequestContext:
     est_after: int = 0
     injected_cache_read: int = 0
     injected: int = 0
-    applied: list = field(default_factory=list)
     breakpoints: list = field(default_factory=list)
     regions: dict = field(default_factory=dict)
     region_text: dict = field(default_factory=dict)
@@ -217,25 +215,28 @@ class Proxy:
         res = self.pipeline.apply(norm, body, ctx.delta_start, ctx.session_id, ctx.request_id)
         body = res.body
         ctx.est_before, ctx.est_after = res.tokens_before, res.tokens_after
-        ctx.applied = res.applied
 
-        # cache protection, after transforms so the guardian sees what is actually sent
-        prev_bp = st.breakpoints if st else []
-        prev_regions = st.regions if st else {}
-        prev_text = st.region_text if st and hasattr(st, "region_text") else {}
-        cur_bp = guardian.breakpoints(norm)
-        if prev_bp and cur_bp:
-            for ev in guardian.check(prev_bp, cur_bp, prev_regions, norm, prev_text):
-                self.ledger.record_event("cache_drift", {"region": ev.region, "cause": ev.cause},
-                                         ctx.session_id, ctx.request_id)
+        # Cache protection. Injection happens first and the drift check runs on the result,
+        # because the request that matters is the one actually sent. Checking beforehand would
+        # see no breakpoints at all for the clients tokunseba injects for, which is most of them.
         ttl = self.cfg.cache_ttl or None
         if not ttl and st and inject.ttl_advice(st.gaps) == "1h":
             self.ledger.record_event("ttl_advice", {"suggest": "1h"}, ctx.session_id, ctx.request_id)
         ctx.injected = inject.inject(norm, body, ctx.delta_start, self.est,
                                      self.cfg.thresholds.cache_min_tokens, ttl)
         if ctx.injected:
-            self.ledger.record_event("cache_injected", {"n": ctx.injected}, ctx.session_id, ctx.request_id)
-            cur_bp = guardian.breakpoints(adapter.parse(body))
+            self.ledger.record_event("cache_injected", {"n": ctx.injected},
+                                     ctx.session_id, ctx.request_id)
+            norm = adapter.parse(body)
+
+        prev_bp = st.breakpoints if st else []
+        prev_regions = st.regions if st else {}
+        prev_text = st.region_text if st else {}
+        cur_bp = guardian.breakpoints(norm)
+        if prev_bp and cur_bp:
+            for ev in guardian.check(prev_bp, cur_bp, prev_regions, norm, prev_text):
+                self.ledger.record_event("cache_drift", {"region": ev.region, "cause": ev.cause},
+                                         ctx.session_id, ctx.request_id)
 
         # tier 3. Gating needs the judge's answer before the request goes out, which costs
         # real latency, so it only happens when the user has asked for it.
@@ -260,7 +261,7 @@ class Proxy:
         ctx.region_text = {"tools": norm.tools_json, "system": norm.system_text}
         ctx.delta_chars = sum(len(b.text or "") for m in norm.messages[ctx.delta_start:] for b in m.blocks)
         self.sessions.commit(ctx.session_id, ctx.request_id, chain, cur_bp,
-                             ctx.regions, 0, ctx.delta_chars)
+                             ctx.regions, ctx.region_text, 0, ctx.delta_chars)
         if self.cfg.store_bodies:
             (self.bodies / f"{ctx.request_id}.sent.json").write_text(json.dumps(body))
         return body, reroute

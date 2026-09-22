@@ -1,3 +1,28 @@
+> **Superseded — this is a build record, not a description of the code.**
+>
+> The tool was built on 2026-09-22 and the implementation deliberately departed from this plan
+> in four places. Read `../specs/2026-09-22-tokunseba-design.md` for what actually exists; read
+> the code and tests for the truth. Kept only for the reasoning trail. Safe to delete.
+>
+> Where it diverged, and why:
+>
+> 1. **Jev was dropped entirely.** This plan pairs Laya with TypeSafe's hosted Jev. The tool
+>    now runs fully locally and for free, with Laya as the only judge. Every mention of Jev,
+>    `jev_judge.py`, `jev_endpoint` and `TYPESAFE_API_KEY` below is obsolete.
+> 2. **The judge left the request path.** This plan calls the judge inline. Measured at roughly
+>    1.5 s per call, which was unacceptable, so judge work now runs after the response is
+>    dispatched and only feeds the ledger. `judge.inline` opts back in.
+> 3. **Regex became authoritative for injection detection.** Laya answers `prompt_injection`
+>    = 1.0 at confidence 1.000 for benign Python, so it may now only corroborate a regex hit.
+> 4. **Transform keys became position-aware.** The plan keys the frozen table on content hash
+>    alone; that let two byte-identical tool results collide and let history poison the table
+>    for new content. Reference transforms are now keyed by content plus referenced position.
+>
+> The plan's 8-task structure was followed. Task counts and test names below are approximate;
+> the suite as built is 321 tests.
+
+---
+
 # Tokunseba Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

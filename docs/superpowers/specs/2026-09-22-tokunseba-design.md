@@ -1,7 +1,7 @@
 # Tokunseba Design Spec
 
 Date: 2026-09-22
-Status: approved for planning
+Status: implemented. Amended 2026-09-22 to match what was built and measured.
 
 ## 1. What it is
 
@@ -16,7 +16,7 @@ Goals
 - One install, one `init`, one `start`. Supported tools are reconfigured automatically. Nothing else to learn.
 - Default behaviour never changes the model, the effort level, or the meaning of the context.
 - Savings are measured in a local ledger with a counterfactual cost, never promised.
-- Works fully offline with local models, and uses Laya as an offline decision model with no fine-tuning.
+- Works fully offline with local models, and uses Laya as an offline decision model with no fine-tuning. There is no hosted judge and no paid dependency of any kind.
 - Instant bypass at any moment.
 
 Non-goals for version 1
@@ -25,6 +25,8 @@ Non-goals for version 1
 - Any TLS man-in-the-middle mode.
 - Fine-tuning Laya or any other model.
 - Any hosted component, account, or telemetry.
+- Any hosted decision model. An earlier draft of this spec paired Laya with TypeSafe's hosted
+  Jev. That was dropped: the tool must run entirely locally and for free.
 
 ## 3. Principles
 
@@ -80,7 +82,7 @@ session        prefix hashing, delta computation
 cache/         guardian, injector, ttl advisor
 transform/     table, handles, canonical, junk, dedup, encodings, summarize, pipeline
 tokens/        estimator per provider
-judge/         Judge protocol, laya, jev, rules
+judge/         Judge protocol, laya, rules
 guards/        secrets, injection
 detect/        installed-tool detection and config writers
 hooks/         Claude Code hook, run wrapper, mcp expand server
@@ -103,35 +105,62 @@ Every write keeps a `.tokunseba.bak` copy and `off` restores it.
 
 ## 7. Judge layer
 
-Verified facts about Laya on 2026-09-22
+Verified against laya 0.3.5 on an M-series laptop, 2026-09-22.
 
-- PyPI package `laya` 0.3.5 released 2026-09-21, Python 3.10 or newer, depends on torch 2.14 and transformers 5.x, Apache 2.0.
-- Weights `convaiinnovations/laya` on Hugging Face, about 808 MB safetensors. Siblings `laya-multilingual` and `laya-typed-decisions`.
-- `laya.load(model_id) -> Agent`, `Agent.predict(state, questions) -> {"answers": {qid: {type, choice|score|noul, probabilities, confidence}}, "usage": {...}}`. Device auto-selects CUDA, then MPS, then CPU. Temperature calibration is applied from the checkpoint config.
-- State budget is 512 tokens on the English checkpoint, about 320 tokens after the option budget. Roughly 1,200 characters of state is the safe cap.
-- Presets that work zero-shot: `router_questions()` with `difficulty` score, `domain` choice, `needs_tools` noul, `is_sensitive` noul; `guard_questions()` with `jailbreak`, `prompt_injection`, `sensitive_data` nouls, `harm_severity` score, `topic` choice.
-- Its README states base checkpoints are near chance on unfamiliar custom decision questions zero-shot. So custom questions get Laya only as a tie-breaker with a high confidence gate, and presets carry the real load.
+- PyPI package `laya` 0.3.5, Python 3.10 or newer, torch 2.14, transformers 5.x, Apache 2.0.
+- Weights `convaiinnovations/laya`, about 808 MB, auto-selects CUDA, then Apple MPS, then CPU.
+  Loaded on MPS here.
+- `laya.load(model_id) -> Agent`, `Agent.predict(state, questions)` returning
+  `{"answers": {qid: {type, choice|score|noul, probabilities, confidence}}}`. Confirmed by
+  inspecting the installed package, not assumed.
+- Presets confirmed present: `router_questions()` with `difficulty` (score, 4 levels), `domain`
+  (choice, 6 labels), `needs_tools` and `is_sensitive` (noul); `guard_questions()` with
+  `jailbreak`, `prompt_injection`, `sensitive_data`, `harm_severity`, `topic`.
+- State budget is about 1,200 characters. Every state is trimmed before it is asked.
 
-Judge protocol
+### Two measurements that changed the design
+
+**Latency is roughly 1.5 seconds per call.** Far too slow to sit in front of every request.
+So the judge runs *after* the response has been dispatched and its answers only reach the
+ledger. `judge.inline` moves it back into the request path for tier 3 gating, at that cost.
+A regression test asserts a deliberately slow judge cannot delay a request.
+
+**Its zero-shot guard is not trustworthy.** Asked whether `def add(a, b): return a + b` is a
+prompt injection, it answers yes at 1.000 confidence. It handles genuine injections and test
+output correctly. So regex is authoritative for injection detection and the judge may only
+*corroborate* a regex hit, never raise one. This is pinned by a smoke test that will fail if
+a future checkpoint fixes the behaviour.
+
+Both findings are what the Laya model card warns about in general terms: base checkpoints
+score near chance on unfamiliar questions. The conservative-gate rule is what makes the model
+safe to use anyway.
+
+### Judge protocol
 
 ```
-ask(state: str | dict, questions: dict[str, dict]) -> dict[str, Answer]
+Judge.available() -> bool
+Judge.ask(state, questions) -> dict[str, Answer]
 Answer(type, value, confidence, probabilities)
 gate(answer, threshold) -> True | False | None   # None means abstain
+JudgeChain.decide(answers, key, want) -> True | False | None
 ```
 
-Backends: `rules` always available, `laya` optional extra, `jev` optional with API key and endpoint from config. Backend order is configurable; the first that returns an answer wins; abstain falls through.
+Backends in order: `rules` (deterministic, always available) then `laya` (optional extra).
+The first backend to answer a question wins; an abstention falls through; a failure or timeout
+is recorded and skipped. With no backend at all, every caller takes the conservative path.
 
-Question catalog and the safe direction
+### What the judge is allowed to decide
 
-| Question | Source | Used for | Safe direction on doubt |
+| Question | Source | Used for | On doubt |
 |---|---|---|---|
-| prompt_injection, jailbreak on tool results | Laya guard preset | ledger warning, opt-in annotation | do nothing |
-| sensitive_data on outbound delta | Laya guard preset plus regex | ledger warning, opt-in redaction | warn only |
-| difficulty, domain, needs_tools on new user message | Laya router preset | analytics, Tier 3 effort and routing gates | keep default model and effort |
-| output_type of a tool result, 7 labels | regex first, Laya tie-breaker | choose summarizer | generic canonicalization |
-| still_needed for an old tool result, only on a cold start with pasted or compacted history | Jev only, 32K state | move to handle before first send | keep inline |
-| compression_safe for a summarized result | Jev only | fall back to full text | send full text |
+| `prompt_injection`, `jailbreak` | Laya guard preset | corroborating a regex hit, ledger only | record nothing |
+| `sensitive_data` | regex, Laya as background signal | ledger warning; opt-in redaction | warn only |
+| `difficulty`, `domain`, `needs_tools`, `is_sensitive` | Laya router preset | analytics; tier 3 gating when `judge.inline` | keep the default model and effort |
+| `output_type` | regex first, judge as tie-breaker | choosing a summariser | generic canonicalisation |
+
+In practice the router preset's confidence on short coding requests sits well below the 0.80
+gate, so tier 3 gating abstains often. That is the intended failure mode: abstaining costs
+tokens, never correctness.
 
 ## 8. Features beyond the core
 
@@ -163,7 +192,7 @@ Retention: blobs and request bodies older than 30 days are pruned by `tokunseba 
 
 - Binds 127.0.0.1 only. Refuses to start on any other address.
 - Never stores API keys. Auth headers are forwarded as received.
-- No telemetry, no outbound calls except to configured upstreams and, if enabled, Jev.
+- No telemetry. The only outbound traffic is to the upstream the tool already chose.
 - Secret scanner runs before any content is written to blobs.
 - Requests bodies are stored only when `store_bodies = true`, default true, because `explain` needs them. Documented and prunable.
 
@@ -173,6 +202,8 @@ Retention: blobs and request bodies older than 30 days are pruned by `tokunseba 
 [proxy]
 port = 7777
 store_bodies = true
+cache_ttl = ""
+rewrite_bash = false
 
 [tiers]
 lossless = true
@@ -184,28 +215,37 @@ effort_routing = false
 model_routing = false
 local_routing = false
 redact_secrets = false
+annotate_injections = false
+model_map = {}
+local_model = ""
 
 [judge]
-backends = ["rules", "laya"]     # order of preference
+backends = ["rules", "laya"]
 laya_model = "convaiinnovations/laya"
 laya_device = "auto"
-jev_endpoint = ""
-jev_api_key_env = "TYPESAFE_API_KEY"
 gate_threshold = 0.80
+timeout = 5.0
+inline = false          # keep the judge out of the request path
 
 [thresholds]
 truncate_lines = 300
 truncate_tokens = 6000
 cache_min_tokens = 1024
+local_truncate_tokens = 1500
 
 [budget]
-daily_usd = 0        # 0 disables
+daily_usd = 0.0
 hard_stop = false
 
-[upstreams.custom.openrouter]
+[failover]
+enabled = false
+
+[upstreams.openrouter]
 base_url = "https://openrouter.ai/api"
 kind = "openai"
 ```
+
+Every key above is read by code, and a test asserts the file round-trips.
 
 ## 12. CLI surface
 
@@ -236,6 +276,6 @@ Expected ranges from comparable tools, to be confirmed by the ledger: 20 to 40 p
 ## 14. Known limits
 
 - No public Claude tokenizer. The estimator learns tokens-per-character per model from usage deltas between consecutive requests in a session.
-- Laya's 512-token state means it sees the new user message and a short excerpt, never the conversation.
-- Jev is early access. The adapter is written against the documented request and response shape and is verified when a key is available.
+- Laya's small state budget means it sees the new user message and a short excerpt, never the
+  conversation. It is therefore a poor judge of anything that needs history.
 - Compaction inside a harness rewrites history wholesale. The proxy treats it as a new session, and the frozen table keeps transforms consistent across it.

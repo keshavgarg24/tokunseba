@@ -73,7 +73,8 @@ const EVENT_TONE = {
   injection_suspected:"warn", budget_exceeded:"warn", ref_dangling:"warn",
   upstream_error:"bad", judge_error:"warn", context_overflow_risk:"warn",
   cache_injected:"good", failover_used:"warn", ttl_advice:"warn",
-  effort_set:"good", model_routed:"good", local_routed:"good", route_signal:""
+  effort_set:"good", model_routed:"good", local_routed:"good", route_signal:"",
+  injection_corroborated:"warn", secret_redacted:"good", record_error:"bad"
 };
 const EVENT_HELP = {
   cache_drift:"a cached prefix changed, so the next request paid full price",
@@ -84,7 +85,16 @@ const EVENT_HELP = {
   ref_dangling:"a stored reference lost its target and the full text was sent",
   context_overflow_risk:"a local model was close to silently truncating the prompt",
   ttl_advice:"this session is slow-paced enough to benefit from the 1 hour cache",
-  route_signal:"difficulty and domain read from the local judge"
+  route_signal:"difficulty and domain read from the local judge",
+  injection_corroborated:"the local judge was asked whether it agreed with a regex hit",
+  secret_redacted:"a credential was replaced before the request left this machine",
+  record_error:"a response was delivered but its usage could not be recorded",
+  budget_exceeded:"today's spend passed the configured daily budget",
+  judge_error:"the local judge failed or timed out; the conservative path was taken",
+  effort_set:"an easy turn was sent at low effort",
+  model_routed:"an easy first turn was sent to a cheaper model",
+  local_routed:"an easy first turn was sent to a local model",
+  failover_used:"the upstream failed and the same model was retried elsewhere"
 };
 
 async function get(p){ const r = await fetch(p); if(!r.ok) throw new Error(p); return r.json(); }

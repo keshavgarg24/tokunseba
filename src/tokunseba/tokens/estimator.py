@@ -58,18 +58,42 @@ class Estimator:
         return self._tiktoken
 
     def _hf_for(self, model: str):
+        """An exact tokenizer, but only if it is already on disk.
+
+        tokunseba must work offline and cost nothing, so it never downloads a tokenizer.
+        Several of these repos are gated anyway, and reaching for the network on every
+        local-model request added seconds of latency for a result that always failed.
+        When nothing is cached the learned character ratio is used instead, which is
+        accurate enough for deciding what to compress.
+        """
         low = model.lower()
         for prefix, repo in TOKENIZER_MAP.items():
-            if prefix in low:
-                if repo not in self._hf:
-                    try:
-                        from tokenizers import Tokenizer
-                        self._hf[repo] = Tokenizer.from_pretrained(repo)
-                    except Exception:
-                        self._hf[repo] = False
-                tok = self._hf[repo]
-                return tok if tok is not False else None
+            if prefix not in low:
+                continue
+            if repo not in self._hf:
+                self._hf[repo] = self._load_cached(repo)
+            tok = self._hf[repo]
+            return tok if tok is not False else None
         return None
+
+    @staticmethod
+    def _load_cached(repo: str):
+        try:
+            from huggingface_hub import try_to_load_from_cache
+        except ImportError:
+            return False
+        path = None
+        for filename in ("tokenizer.json", "tokenizer_config.json"):
+            hit = try_to_load_from_cache(repo, filename)
+            if isinstance(hit, str):
+                path = hit if filename == "tokenizer.json" else path
+        if not path:
+            return False
+        try:
+            from tokenizers import Tokenizer
+            return Tokenizer.from_file(path)
+        except Exception:
+            return False
 
     def count(self, text: str, provider: str, model: str) -> int:
         if not text:

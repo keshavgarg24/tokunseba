@@ -27,3 +27,17 @@ def test_static_page_exists_and_is_self_contained():
 async def test_dashboard_page_is_served(client):
     r = await client.get("/_tokunseba/")
     assert r.status_code == 200 and "tokunseba" in r.text
+
+
+def test_every_emitted_signal_is_explained_on_the_dashboard():
+    """A signal nobody can interpret is noise. Keep the map and the code in step."""
+    import re
+    from pathlib import Path
+    src = Path("src/tokunseba")
+    emitted = set()
+    for f in src.rglob("*.py"):
+        emitted |= set(re.findall(r'record_event\(\s*"([a-z_]+)"', f.read_text()))
+    html = (src / "ui" / "static" / "index.html").read_text()
+    explained = set(re.findall(r'^\s*([a-z_]+):"', html, re.M))
+    missing = sorted(emitted - explained)
+    assert not missing, f"signals with no explanation on the dashboard: {missing}"

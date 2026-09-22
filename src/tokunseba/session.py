@@ -21,6 +21,7 @@ class SessionState:
     last_request_id: str = ""
     breakpoints: list[tuple[str, str]] = field(default_factory=list)
     regions: dict[str, str] = field(default_factory=dict)
+    region_text: dict[str, str] = field(default_factory=dict)
     total_input_tokens: int = 0
     delta_chars: int = 0
     last_ts: float = 0.0
@@ -52,6 +53,7 @@ class SessionIndex:
     def commit(self, session_id: str, request_id: str, chain: list[str],
                breakpoints: list[tuple[str, str]] | None = None,
                regions: dict[str, str] | None = None,
+               region_text: dict[str, str] | None = None,
                total_input_tokens: int = 0, delta_chars: int = 0) -> None:
         st = self.sessions.get(session_id)
         now = time.time()
@@ -71,6 +73,8 @@ class SessionIndex:
             st.breakpoints = breakpoints
         if regions is not None:
             st.regions = regions
+        if region_text is not None:
+            st.region_text = region_text
         st.total_input_tokens = total_input_tokens
         st.delta_chars = delta_chars
         st.last_ts = now

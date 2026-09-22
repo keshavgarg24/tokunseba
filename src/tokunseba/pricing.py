@@ -29,7 +29,6 @@ TABLE: dict[str, Price] = {
     "ollama/*": Price(0.0, 0.0, 0.0, 0.0),
 }
 
-FREE = Price(0.0, 0.0, 0.0, 0.0)
 
 
 def price_for(provider: str, model: str, overrides: dict[str, dict[str, float]]) -> Price | None:

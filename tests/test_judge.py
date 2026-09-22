@@ -1,4 +1,3 @@
-import pytest
 
 from tokunseba.judge.base import Answer, JudgeChain, gate
 from tokunseba.judge.laya_judge import _truncate

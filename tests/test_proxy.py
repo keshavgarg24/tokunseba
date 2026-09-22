@@ -206,3 +206,77 @@ async def test_failover_retries_on_529(client, proxy_app):
     r = await client.post("/anthropic/v1/messages", json=_msg(), headers={"x-api-key": "k"})
     assert r.status_code == 200
     assert led.stats(0)["events"]["failover_used"] == 1
+
+
+async def test_multi_turn_conversation_keeps_history_byte_stable(client, proxy_app):
+    """The core production property: a growing conversation must re-send identical bytes for
+    every turn it already sent, or the prompt cache breaks and the tool costs more than it saves.
+    """
+    _app, _cfg, led, up = proxy_app
+    outputs = ["\n".join(f"turn {t} line {i}: some output" for i in range(400)) for t in range(4)]
+    messages = [{"role": "user", "content": "start"}]
+    seen: list[list[str]] = []
+
+    for turn in range(4):
+        messages.append({"role": "assistant", "content": [
+            {"type": "tool_use", "id": f"t{turn}", "name": "Bash",
+             "input": {"command": f"make step{turn}"}}]})
+        messages.append({"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": f"t{turn}",
+             "content": [{"type": "text", "text": outputs[turn]}]}]})
+        await client.post("/anthropic/v1/messages",
+                          json={"model": "claude-opus-5", "max_tokens": 50,
+                                "system": "s" * 6000, "messages": json.loads(json.dumps(messages))},
+                          headers={"x-api-key": "k"})
+        sent = up.last["body"]["messages"]
+        seen.append([m["content"][0]["content"][0]["text"]
+                     for m in sent if isinstance(m.get("content"), list)
+                     and m["content"][0].get("type") == "tool_result"])
+
+    for turn in range(1, 4):
+        assert seen[turn][:turn] == seen[turn - 1], (
+            f"turn {turn} rewrote history that turn {turn - 1} had already sent")
+    assert led.stats(0)["requests"] == 4
+    assert led.stats(0)["tokens_saved"] > 0
+
+
+async def test_a_reordered_tool_list_is_reported_not_silently_paid_for(client, proxy_app):
+    """Clients that rebuild their tool array in a different order silently kill the cache."""
+    _app, _cfg, led, _up = proxy_app
+    base = {"model": "claude-opus-5", "max_tokens": 50, "system": "s" * 6000,
+            "messages": [{"role": "user", "content": "hi"}]}
+    a = dict(base, tools=[{"name": "alpha", "input_schema": {}}, {"name": "beta", "input_schema": {}}])
+    await client.post("/anthropic/v1/messages", json=a, headers={"x-api-key": "k"})
+    b = dict(base, tools=[{"name": "beta", "input_schema": {}}, {"name": "alpha", "input_schema": {}}])
+    await client.post("/anthropic/v1/messages", json=b, headers={"x-api-key": "k"})
+    assert led.stats(0)["events"].get("cache_drift", 0) >= 1
+
+
+async def test_malformed_upstream_response_does_not_break_the_client(client, proxy_app, monkeypatch):
+    _app, _cfg, led, _up = proxy_app
+    import httpx
+
+    async def bad(req, **kw):
+        return httpx.Response(200, content=b"not json at all",
+                              headers={"content-type": "application/json"},
+                              request=req)
+    monkeypatch.setattr(_app.state.proxy.client, "send", bad)
+    r = await client.post("/anthropic/v1/messages",
+                          json={"model": "claude-opus-5", "max_tokens": 5,
+                                "messages": [{"role": "user", "content": "hi"}]},
+                          headers={"x-api-key": "k"})
+    assert r.status_code == 200 and r.content == b"not json at all"
+
+
+async def test_truncated_stream_still_records_what_it_saw(client, proxy_app):
+    """A stream that dies mid-event must still deliver what arrived and record the usage."""
+    _app, _cfg, led, _up = proxy_app
+    r = await client.post("/anthropic/v1/messages",
+                          json={"model": "claude-opus-5", "max_tokens": 5, "stream": True,
+                                "metadata": {"truncate": True},
+                                "messages": [{"role": "user", "content": "hi"}]},
+                          headers={"x-api-key": "k"})
+    assert r.status_code == 200
+    assert "message_start" in r.text
+    assert led.stats(0)["requests"] == 1
+    assert led.stats(0)["input_tokens"] == 50

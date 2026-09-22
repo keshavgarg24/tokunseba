@@ -62,6 +62,8 @@ def upstream():
             code, rec.status = rec.status, 200
             return Response('{"error":"transient"}', status_code=code,
                             media_type="application/json")
+        if body and body.get("metadata", {}).get("truncate"):
+            return StreamingResponse(truncated_gen(), media_type="text/event-stream")
         if body and body.get("stream"):
             async def gen():
                 for part in ANTHROPIC_SSE.split("\n\n"):
@@ -69,6 +71,13 @@ def upstream():
                         yield (part + "\n\n").encode()
             return StreamingResponse(gen(), media_type="text/event-stream")
         return Response(json.dumps(ANTHROPIC_JSON), media_type="application/json")
+
+    async def truncated_gen():
+        """A stream that dies in the middle of an event."""
+        yield (b'event: message_start\ndata: {"type":"message_start","message":'
+               b'{"usage":{"input_tokens":50,"cache_read_input_tokens":0,'
+               b'"cache_creation_input_tokens":0,"output_tokens":1}}}\n\n')
+        yield b'event: content_block_delta\ndata: {"type":"content_bl'
 
     async def chat(request):
         body = await capture(request)
