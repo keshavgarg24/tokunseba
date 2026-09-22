@@ -1,3 +1,5 @@
+import pytest
+
 
 from tokunseba.judge.base import Answer, JudgeChain, gate
 from tokunseba.judge.laya_judge import _truncate
@@ -87,3 +89,21 @@ def test_laya_unavailable_is_graceful():
     from tokunseba.judge.laya_judge import LayaJudge
     j = LayaJudge()
     assert isinstance(j.available(), bool)
+
+
+def test_laya_load_suppresses_library_noise(monkeypatch):
+    """A progress bar and a calibration warning would wreck a rendered table.
+
+    The environment is set before the library is imported, so this asserts it without
+    paying the cost of actually loading an 808 MB checkpoint.
+    """
+    import os
+    import sys
+    from tokunseba.judge.laya_judge import LayaJudge
+    monkeypatch.delenv("HF_HUB_DISABLE_PROGRESS_BARS", raising=False)
+    monkeypatch.delenv("TRANSFORMERS_VERBOSITY", raising=False)
+    monkeypatch.setitem(sys.modules, "laya", None)   # makes `import laya` raise, fast
+    with pytest.raises(ImportError):
+        LayaJudge().load()
+    assert os.environ.get("HF_HUB_DISABLE_PROGRESS_BARS") == "1"
+    assert os.environ.get("TRANSFORMERS_VERBOSITY") == "error"

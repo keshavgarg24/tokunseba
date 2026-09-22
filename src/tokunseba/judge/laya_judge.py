@@ -40,8 +40,19 @@ class LayaJudge:
             return False
 
     def load(self) -> None:
+        """Load the checkpoint, quietly.
+
+        The upstream library prints a download progress bar and a calibration warning to
+        stderr. Neither is actionable for someone running a CLI command, and both wreck the
+        layout of a rendered table, so they are suppressed here rather than shown.
+        """
         if self._agent is not None:
             return
+        import os
+        import warnings
+        os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+        os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+        warnings.filterwarnings("ignore", category=RuntimeWarning, module="laya.*")
         import laya
         if self.device and self.device != "auto":
             self._agent = laya.Agent(self.model_id, device=self.device)

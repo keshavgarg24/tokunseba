@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 232 64" width="232" height="64" role="img" aria-labelledby="tokunseba-wordmark-title">
+  <title id="tokunseba-wordmark-title">tokunseba</title>
+  <style>svg:root{color:#232831}@media (prefers-color-scheme:dark){svg:root{color:#E4E8EF}}</style>
+  <g transform="translate(2 6.4) scale(0.8)">
+  <g fill="none" stroke="currentColor" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 13h21l13 19"/>
+    <path d="M5 51h21l13-19"/>
+    <path d="M5 32h34"/>
+  </g>
+  <path d="M39 32h19" fill="none" stroke="var(--tokunseba-accent, #3D7BE0)" stroke-width="9" stroke-linecap="round"/>
+  </g>
+  <text x="62" y="42" fill="currentColor" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="30">tokunseba</text>
+</svg>

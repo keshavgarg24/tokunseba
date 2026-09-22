@@ -82,13 +82,16 @@ def detect_all() -> list[ToolStatus]:
     return out
 
 
-def apply_all(cfg: Any, hooks: bool = True) -> list[str]:
+def apply_all(cfg: Any, hooks: bool = True, mcp: bool = False) -> list[str]:
     paths = [
         claude_code.apply(cfg.base("anthropic"), hooks=hooks),
         codex.apply(cfg.base("openai") + "/v1"),
         envfile.apply(cfg.port),
     ]
-    if shutil.which("claude"):
+    # Registering the MCP server is opt-in. Claude Code has a shell, so `tokunseba expand`
+    # already works there, and registering spawns a Python process per session, which on
+    # macOS surfaces as a window each time.
+    if mcp and shutil.which("claude"):
         ok, stdout = _run(["claude", "mcp", "list"])
         if not ok:
             paths.append("could not list claude mcp servers; skipped mcp registration")

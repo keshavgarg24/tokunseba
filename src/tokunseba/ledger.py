@@ -202,6 +202,44 @@ class Ledger:
         return [{"position": a, "kind": b, "orig_tokens": c, "new_tokens": d,
                  "handle": e, "orig_sha": f, "transformed": g} for a, b, c, d, e, f, g in rows]
 
+    def transform_summary(self, since_ts: float) -> list[dict]:
+        """What was actually rewritten in the window, grouped by kind."""
+        rows = self._conn.execute(
+            """SELECT t.kind, COUNT(*), COALESCE(SUM(t.orig_tokens),0), COALESCE(SUM(t.new_tokens),0),
+                      COALESCE(SUM(rt.saved_tokens),0)
+               FROM request_transforms rt
+               JOIN transforms t ON t.orig_sha=rt.orig_sha
+               JOIN requests r ON r.id=rt.request_id
+               WHERE r.ts>=? GROUP BY t.kind ORDER BY 5 DESC""", (since_ts,)).fetchall()
+        return [{"kind": a, "count": b, "tokens_before": c, "tokens_after": d, "saved": e}
+                for a, b, c, d, e in rows]
+
+    def top_transforms(self, since_ts: float, limit: int = 15) -> list[dict]:
+        """The individual rewrites that saved the most tokens."""
+        rows = self._conn.execute(
+            """SELECT t.kind, rt.saved_tokens, t.handle, t.orig_tokens, t.new_tokens,
+                      rt.request_id, rt.position
+               FROM request_transforms rt
+               JOIN transforms t ON t.orig_sha=rt.orig_sha
+               JOIN requests r ON r.id=rt.request_id
+               WHERE r.ts>=? ORDER BY rt.saved_tokens DESC LIMIT ?""",
+            (since_ts, limit)).fetchall()
+        return [{"kind": a, "saved": b, "handle": c, "orig_tokens": d, "new_tokens": e,
+                 "request_id": f, "position": g} for a, b, c, d, e, f, g in rows]
+
+    def biggest_passthroughs(self, since_ts: float, limit: int = 15) -> list[dict]:
+        """The largest blocks forwarded untouched: what tokunseba could not help with.
+
+        Read straight from the transform table rather than through request_transforms, because
+        that join table only records blocks that actually changed. Joining it would make this
+        view permanently empty, which is the opposite of the point.
+        """
+        rows = self._conn.execute(
+            """SELECT orig_sha, orig_tokens, created FROM transforms
+               WHERE created>=? AND kind='passthrough'
+               ORDER BY orig_tokens DESC LIMIT ?""", (since_ts, limit)).fetchall()
+        return [{"orig_sha": a, "orig_tokens": b, "created": c} for a, b, c in rows]
+
     def daily(self, days: int = 14) -> list[dict]:
         since = time.time() - days * 86400
         rows = self._conn.execute(
@@ -255,6 +293,17 @@ class Ledger:
                         "output_tokens_per_session": round(outp / s, 1),
                         "usd_per_session": round(usd / s, 5)}
         return out
+
+    def first_requests(self, since_ts: float, limit: int = 200) -> list[dict]:
+        """The opening request of each conversation, which is what a router would see."""
+        rows = self._conn.execute(
+            """SELECT id, session_id, model, provider, input_tokens, cache_read, cache_write,
+                      output_tokens, cost_usd, MIN(ts)
+               FROM requests WHERE ts>=? GROUP BY session_id ORDER BY MIN(ts) DESC LIMIT ?""",
+            (since_ts, limit)).fetchall()
+        keys = ("id", "session_id", "model", "provider", "input_tokens", "cache_read",
+                "cache_write", "output_tokens", "cost_usd")
+        return [dict(zip(keys, r[:-1])) for r in rows]
 
     def prune(self, days: int = 30) -> int:
         cutoff = time.time() - days * 86400

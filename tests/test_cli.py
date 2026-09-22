@@ -111,8 +111,11 @@ def test_statusline_offline_is_graceful(dead_port):
     assert r.exit_code == 0 and "offline" in r.output
 
 
-def test_ui_requires_a_running_proxy(dead_port):
-    assert run(["ui"]).exit_code == 1
+def test_ui_renders_in_the_terminal_without_a_proxy(dead_port):
+    """There is no browser any more: the dashboard must still render from the ledger."""
+    r = run(["ui"])
+    assert r.exit_code == 0
+    assert "proxy not running" in r.output.replace("\n", " ")
 
 
 def test_init_and_off_do_not_touch_real_files(home, tmp_path, monkeypatch):

@@ -1,3 +1,5 @@
+<img src="assets/logo-wordmark.svg" alt="tokunseba" width="232" height="64">
+
 # tokunseba
 
 A local proxy that cuts token usage for every AI coding tool on your machine, without changing what the model can know.

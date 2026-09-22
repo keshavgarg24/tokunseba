@@ -1,13 +1,14 @@
-"""Local dashboard JSON endpoints and the static page. Bound to localhost, never public."""
+"""Local JSON endpoints for the status line. Bound to localhost, never public.
+
+There is deliberately no web page: the dashboard lives in the terminal (`tokunseba ui`).
+"""
 from __future__ import annotations
 
 import time
-from pathlib import Path
 
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-STATIC = Path(__file__).parent / "static"
 
 
 def parse_since(s: str) -> float:
@@ -39,12 +40,13 @@ def mount_ui(app, ledger, cfg) -> None:
     async def ab(request):
         return JSONResponse(ledger.stats_ab(parse_since(request.query_params.get("since", "30d"))))
 
-    async def index(request):
-        return FileResponse(STATIC / "index.html")
-
     for path, fn in (("/_tokunseba/api/stats", stats), ("/_tokunseba/api/events", events),
                      ("/_tokunseba/api/sessions", sessions), ("/_tokunseba/api/daily", daily),
                      ("/_tokunseba/api/ab", ab)):
         app.router.routes.insert(0, Route(path, fn, methods=["GET"]))
-    app.router.routes.insert(0, Route("/_tokunseba/", index, methods=["GET"]))
-    app.router.routes.insert(0, Route("/_tokunseba", index, methods=["GET"]))
+    async def hint(request):
+        return JSONResponse({"tokunseba": "this is a local JSON API; the dashboard is "
+                                          "in your terminal: run `tokunseba ui`"})
+
+    app.router.routes.insert(0, Route("/_tokunseba/", hint, methods=["GET"]))
+    app.router.routes.insert(0, Route("/_tokunseba", hint, methods=["GET"]))

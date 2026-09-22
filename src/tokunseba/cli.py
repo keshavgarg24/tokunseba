@@ -41,6 +41,25 @@ def _k(v: int) -> str:
     return str(v)
 
 
+def _wordmark() -> str:
+    """The compact one-line mark. Falls back to plain text until brand.py exists."""
+    try:
+        from .brand import WORDMARK
+    except ImportError:
+        return "tokunseba"
+    return WORDMARK or "tokunseba"
+
+
+def _banner(subtitle: str = "") -> str:
+    """The shared heading for every command that prints one."""
+    try:
+        from .brand import banner
+    except ImportError:
+        tail = f"  [dim]{escape(subtitle)}[/dim]" if subtitle else ""
+        return f"[bold]{_wordmark()}[/bold]{tail}"
+    return banner(subtitle)
+
+
 @click.group()
 @click.version_option(__version__, prog_name="tokunseba")
 def main() -> None:
@@ -51,7 +70,10 @@ def main() -> None:
 @main.command()
 @click.option("--no-service", is_flag=True, help="Do not install the background service.")
 @click.option("--no-hooks", is_flag=True, help="Do not register Claude Code hooks.")
-def init(no_service: bool, no_hooks: bool) -> None:
+@click.option("--with-mcp", is_flag=True,
+              help="Register the MCP expand tool. Only needed for agents with no shell; "
+                   "it costs one background process per session.")
+def init(no_service: bool, no_hooks: bool, with_mcp: bool) -> None:
     """Point every supported tool at the proxy and start it in the background."""
     from . import service
     from .detect import registry
@@ -59,7 +81,7 @@ def init(no_service: bool, no_hooks: bool) -> None:
     config.save(cfg)
 
     console.print("[bold]Configuring tools[/bold]")
-    for line in registry.apply_all(cfg, hooks=not no_hooks):
+    for line in registry.apply_all(cfg, hooks=not no_hooks, mcp=with_mcp):
         console.print(f"  {escape(str(line))}")
 
     if not no_service:
@@ -147,6 +169,7 @@ def status() -> None:
     from .service import running
     cfg = config.load()
     up = running(cfg.port)
+    console.print(_banner("status"))
     console.print(f"proxy: {'[green]running[/green]' if up else '[red]not running[/red]'} "
                   f"on 127.0.0.1:{cfg.port}")
     s = _ledger().stats(time.time() - 86400)
@@ -195,7 +218,8 @@ def stats(since: str, project: str | None, ab: bool, as_json: bool) -> None:
     if as_json:
         console.print_json(json.dumps(s))
         return
-    head = Table(title=f"tokunseba · {since}", title_justify="left", header_style="dim", box=None)
+    console.print(_banner(f"stats · last {since}"))
+    head = Table(header_style="dim", box=None)
     head.add_column("metric")
     head.add_column("value", justify="right")
     head.add_row("requests", str(s["requests"]))
@@ -312,18 +336,167 @@ def prune(days: int) -> None:
     console.print(f"removed {rows} request rows, {blobs} blobs, {bodies} stored bodies")
 
 
-@main.command()
-def ui() -> None:
-    """Open the local dashboard."""
-    import webbrowser
+# --------------------------------------------------------------------------- dashboard
+def _dashboard(led: Ledger, since: str):
+    """Build the whole dashboard as one renderable, from the ledger as it stands now."""
+    from rich.console import Group
+
     from .service import running
+    from .ui.terminal import (
+        by_tool_table,
+        sessions_table,
+        signal_table,
+        sparkline,
+        stat_tiles,
+        style,
+    )
     cfg = config.load()
-    url = f"http://127.0.0.1:{cfg.port}/_tokunseba/"
-    if not running(cfg.port):
-        err.print("proxy is not running — start it with: tokunseba start")
+    s = led.stats(_since(since))
+    up = running(cfg.port)
+    live = (f"[{style('good')}]proxy running[/] [{style('dim')}]on 127.0.0.1:{cfg.port}[/]" if up
+            else f"[{style('dim')}]proxy not running — start it with: tokunseba start[/]")
+    dim = style("dim")
+    return Group(
+        _banner(f"last {since}"),
+        live,
+        "",
+        stat_tiles(s),
+        "",
+        f"[{dim}]tokens saved per day[/]",
+        f"[{style('accent')}]{sparkline(led.daily(14))}[/]",
+        "",
+        f"[{dim}]by tool[/]",
+        by_tool_table(s["by_tool"]),
+        "",
+        f"[{dim}]signals[/]",
+        signal_table(s["events"]),
+        "",
+        f"[{dim}]recent sessions[/]",
+        sessions_table(led.recent_sessions(8)),
+    )
+
+
+@main.command()
+@click.option("--watch", "-w", "watch_flag", is_flag=True,
+              help="Redraw every 2 seconds until Ctrl-C.")
+@click.option("--since", default="7d", help="e.g. 24h, 7d, 30d")
+def ui(watch_flag: bool, since: str) -> None:
+    """Show the dashboard in this terminal. No browser, ever."""
+    _render_dashboard(watch_flag, since)
+
+
+@main.command("watch")
+@click.option("--since", default="7d", help="e.g. 24h, 7d, 30d")
+def watch_cmd(since: str) -> None:
+    """Live dashboard. The same as: tokunseba ui --watch"""
+    _render_dashboard(True, since)
+
+
+def _render_dashboard(watching: bool, since: str) -> None:
+    led = _ledger()
+    if not watching:
+        console.print(_dashboard(led, since))
+        return
+    from rich.live import Live
+    try:
+        with Live(_dashboard(led, since), console=console, refresh_per_second=4) as live:
+            while True:
+                time.sleep(2)
+                live.update(_dashboard(led, since))
+    except KeyboardInterrupt:  # Ctrl-C is how you leave; it is not a failure
+        console.print("[dim]stopped watching[/dim]")
+
+
+# --------------------------------------------------------------------------- verify
+@main.command()
+def verify() -> None:
+    """Prove tokunseba is in the path and saving tokens, with evidence rather than claims."""
+    from .detect import registry
+    from .service import running
+    from .ui.terminal import check_table, k, pct, style
+    cfg = config.load()
+    led = _ledger()
+    since = time.time() - 86400
+    s = led.stats(since)
+    summary = led.transform_summary(since)
+    applied = sum(r["count"] for r in summary)
+    saved = sum(r["saved"] for r in summary)
+    drift = sum(s["events"].get(kind, 0) for kind in ("cache_drift", "cache_miss_unexplained"))
+
+    console.print(_banner("verify · last 24h"))
+    if s["requests"] == 0 and applied == 0:
+        console.print(
+            "\nNothing has been recorded yet, so there is nothing to verify.\n"
+            "To generate data:\n"
+            "  1. [bold]tokunseba init[/bold]    point your tools at the proxy\n"
+            "  2. [bold]tokunseba start[/bold]   run the proxy in the background\n"
+            "  3. open a new shell and use your coding tool once\n"
+            "  4. [bold]tokunseba verify[/bold]  run this again")
+        return
+
+    routed = [t.name for t in registry.detect_all() if t.configured]
+    checks = [
+        ("proxy reachable", running(cfg.port), f"127.0.0.1:{cfg.port}", True),
+        ("a tool is routed through it", bool(routed),
+         ", ".join(routed) if routed else "no tool configured — run: tokunseba init", True),
+        ("requests recorded in the last 24h", s["requests"] > 0,
+         f"{s['requests']} requests across {len(s['by_tool'])} tools", True),
+        ("transforms actually applied", applied > 0,
+         f"{applied} transforms, {len(summary)} kinds, {k(saved)} tokens saved", True),
+        ("cache is being read back", s["cache_read"] > 0,
+         f"{pct(s['cache_hit_rate'])} of input tokens, {k(s['cache_read'])} from cache", False),
+        ("no cache drift", drift == 0,
+         "clean" if drift == 0 else
+         f"{drift} drift signal{'s' if drift != 1 else ''} — see: tokunseba ui", False),
+    ]
+    console.print(check_table([(n, ok, detail) for n, ok, detail, _ in checks]))
+
+    if summary:
+        t = Table(title="transforms by kind", title_justify="left",
+                  header_style="dim", box=None)
+        t.add_column("kind", overflow="fold")
+        t.add_column("count", justify="right")
+        t.add_column("before", justify="right")
+        t.add_column("after", justify="right")
+        t.add_column("saved", justify="right")
+        for r in summary:
+            t.add_row(escape(str(r["kind"])), str(r["count"]), _k(r["tokens_before"]),
+                      _k(r["tokens_after"]), _k(r["saved"]))
+        console.print(t)
+
+    failed = [name for name, ok, _d, essential in checks if essential and not ok]
+    advisory = [name for name, ok, _d, essential in checks if not essential and not ok]
+    if failed:
+        console.print(f"\n[{style('bad')}]not verified[/] — failed: "
+                      + escape("; ".join(failed)))
         raise SystemExit(1)
-    console.print(url)
-    webbrowser.open(url)
+    note = ""
+    if advisory:
+        note = " [dim](" + escape("; ".join(advisory)) + ")[/dim]"
+    console.print(f"\n[{style('good')}]verified[/] — {k(saved)} tokens saved in the last 24h"
+                  f" across {applied} transforms.{note}")
+
+
+# --------------------------------------------------------------------------- top
+@main.command()
+@click.option("--since", default="7d", help="e.g. 24h, 7d, 30d")
+@click.option("--limit", default=15, show_default=True, help="Rows per table.")
+def top(since: str, limit: int) -> None:
+    """Show where the tokens went: the biggest savings, and what could not be helped."""
+    from .ui.terminal import passthrough_table, style, transform_table
+    led = _ledger()
+    ts = _since(since)
+    wins = led.top_transforms(ts, limit)
+    misses = led.biggest_passthroughs(ts, limit)
+    console.print(_banner(f"top · last {since}"))
+    console.print(f"\n[{style('dim')}]biggest savings[/]")
+    console.print(transform_table(wins))
+    console.print(f"\n[{style('dim')}]biggest untouched blocks — "
+                  "what tokunseba could not help with[/]")
+    console.print(passthrough_table(misses))
+    if wins:
+        console.print(f"\n[dim]See one request in full with: "
+                      f"tokunseba explain {escape(str(wins[0]['request_id']))}[/dim]")
 
 
 @main.command()
@@ -360,6 +533,92 @@ def statusline() -> None:
     if drift:
         parts.append(f"drift {drift}")
     click.echo(" · ".join(parts))
+
+
+@main.command()
+@click.option("--since", default="30d", show_default=True)
+@click.option("--limit", default=100, show_default=True, help="Conversations to judge.")
+@click.option("--to", "target", default="claude-sonnet-5", show_default=True,
+              help="The cheaper model to price against.")
+def advise(since: str, limit: int, target: str) -> None:
+    """Ask the local judge what your prompts looked like, and what routing them would save.
+
+    This runs offline over conversations that already happened, so it costs nothing, adds no
+    latency, and cannot change an answer. It is the honest way to find out whether routing by
+    prompt is worth switching on before you switch it on.
+    """
+
+    from .advise import EASY_SCORE, collect_turns, counterfactual_cost, judge_turns
+    from .judge import build_chain
+    from .ui.terminal import style
+
+    cfg = config.load()
+    led = _ledger()
+    console.print(_banner("routing advice"))
+    turns = collect_turns(led, config.home() / "bodies", _since(since), limit)
+    if not turns:
+        console.print("[dim]No conversations recorded yet. Use a tool through the proxy, then "
+                      "run this again. Request bodies must be stored (proxy.store_bodies).[/dim]")
+        return
+
+    console.print(f"[dim]Judging {len(turns)} conversations with the local model. "
+                  f"The first call loads it, which takes a minute.[/dim]")
+    adv = judge_turns(turns, build_chain(cfg, led), cfg.judge.gate_threshold)
+    if adv.note:
+        console.print(f"[{style('warn')}]{escape(adv.note)}[/]")
+    if not adv.judged:
+        return
+
+    t = Table(title="what the judge saw", title_justify="left", header_style="dim", box=None)
+    t.add_column("difficulty", justify="right")
+    t.add_column("conf", justify="right")
+    t.add_column("domain")
+    t.add_column("conf", justify="right")
+    t.add_column("spent", justify="right")
+    t.add_column("opening prompt", overflow="ellipsis", max_width=46)
+    for x in adv.turns:
+        d = "-" if x.difficulty is None else f"{x.difficulty:.2f}"
+        t.add_row(d, f"{x.difficulty_confidence:.2f}", escape(x.domain or "-"),
+                  f"{x.domain_confidence:.2f}", f"${x.cost_usd:.3f}",
+                  escape(x.prompt.replace(chr(10), " ")[:46]))
+    console.print(t)
+
+    doms = adv.confident_domains
+    if doms:
+        d = Table(title="domain, where the judge is confident", title_justify="left",
+                  header_style="dim", box=None)
+        d.add_column("domain")
+        d.add_column("conversations", justify="right")
+        d.add_column("spent", justify="right")
+        for name, rows in sorted(doms.items(), key=lambda kv: -len(kv[1])):
+            d.add_row(escape(name), str(len(rows)), f"${sum(r.cost_usd for r in rows):.3f}")
+        console.print(d)
+    else:
+        console.print("[dim]The judge was not confident about the domain of any conversation.[/dim]")
+
+    easy = adv.easy_turns
+    console.print()
+    if not easy:
+        console.print("[dim]None of these scored easy, so there is nothing obvious to "
+                      "route away.[/dim]")
+    else:
+        spent = sum(x.cost_usd for x in easy)
+        alt = counterfactual_cost(easy, target, cfg.pricing_overrides)
+        console.print(f"[bold]{len(easy)} of {len(adv.turns)} conversations scored "
+                      f"easy[/bold] (difficulty at or below {EASY_SCORE})")
+        console.print(f"  they cost      ${spent:.3f}")
+        if alt is None:
+            console.print(f"  [dim]no price known for {escape(target)}[/dim]")
+        else:
+            console.print(f"  on {escape(target)}   ${alt:.3f}")
+            console.print(f"  [{style('good')}]difference    ${spent - alt:.3f}[/]")
+
+    console.print()
+    console.print("[dim]How to read this. Measured on this machine, the local judge names the "
+                  "domain well and confidently, but its difficulty confidence stays low even "
+                  "when the ranking is right. So domain is a usable routing signal and "
+                  "difficulty is only a hint. Treat the number above as an upper bound on what "
+                  "automatic routing could save, not a promise.[/dim]")
 
 
 # --------------------------------------------------------------------------- wrappers
