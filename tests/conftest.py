@@ -7,10 +7,29 @@ from starlette.responses import Response, StreamingResponse
 from starlette.routing import Route
 
 
+def _free_port() -> int:
+    """A port nothing is listening on, so tests do not depend on whether the developer
+    happens to have their own proxy running."""
+    import socket
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     monkeypatch.setenv("TOKUNSEBA_HOME", str(tmp_path))
     return tmp_path
+
+
+@pytest.fixture
+def dead_port(home):
+    """Point the config at a port with nothing behind it."""
+    from tokunseba import config
+    cfg = config.load()
+    cfg.port = _free_port()
+    config.save(cfg)
+    return cfg.port
 
 
 ANTHROPIC_JSON = {

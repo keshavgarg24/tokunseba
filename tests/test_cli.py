@@ -79,7 +79,7 @@ def test_stats_ab_note_when_no_arms(home):
     assert "every session is a control" in run(["stats", "--ab"]).output
 
 
-def test_status_reports_not_running(home):
+def test_status_reports_not_running(dead_port):
     out = run(["status"]).output
     assert "not running" in out
 
@@ -106,12 +106,12 @@ def test_prune_reports_counts(home):
     assert "request rows" in run(["prune", "--days", "0"]).output
 
 
-def test_statusline_offline_is_graceful(home):
+def test_statusline_offline_is_graceful(dead_port):
     r = run(["statusline"], input="{}")
     assert r.exit_code == 0 and "offline" in r.output
 
 
-def test_ui_requires_a_running_proxy(home):
+def test_ui_requires_a_running_proxy(dead_port):
     assert run(["ui"]).exit_code == 1
 
 
