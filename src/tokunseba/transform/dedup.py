@@ -21,22 +21,37 @@ def _path_of(norm: NormalizedRequest, block: Block) -> str | None:
     return None
 
 
-def find_reference(norm: NormalizedRequest, upto: int, sha: str) -> tuple[int, str] | None:
-    """An earlier tool result with byte-identical content."""
-    for i in range(upto):
-        for b in norm.messages[i].blocks:
+def find_reference(norm: NormalizedRequest, upto: int, sha: str,
+                   block_upto: int | None = None) -> tuple[int, str] | None:
+    """An earlier tool result with byte-identical content.
+
+    "Earlier" means earlier in document order, which includes earlier blocks of the *same*
+    message. Parallel tool calls all return into one user message, so restricting this to
+    previous messages would miss the single most common way a duplicate arises.
+    """
+    for i in range(upto + 1):
+        for j, b in enumerate(norm.messages[i].blocks):
+            if i == upto and (block_upto is None or j >= block_upto):
+                break
             if b.kind == "tool_result" and b.text and sha256_text(b.text) == sha:
                 return i, sha
     return None
 
 
-def find_reread(norm: NormalizedRequest, upto: int, block: Block) -> tuple[int, str, str] | None:
-    """The most recent earlier read of the same path with different content."""
+def find_reread(norm: NormalizedRequest, upto: int, block: Block,
+                block_upto: int | None = None) -> tuple[int, str, str] | None:
+    """The most recent earlier read of the same path with different content.
+
+    Walks document order backwards, including earlier blocks of the same message.
+    """
     path = _path_of(norm, block)
     if not path or not block.text:
         return None
-    for i in range(upto - 1, -1, -1):
-        for b in norm.messages[i].blocks:
+    for i in range(upto, -1, -1):
+        blocks = norm.messages[i].blocks
+        stop = len(blocks) if i < upto else (block_upto if block_upto is not None else 0)
+        for j in range(stop - 1, -1, -1):
+            b = blocks[j]
             if b.kind != "tool_result" or not b.text or b.text == block.text:
                 continue
             if _path_of(norm, b) == path:

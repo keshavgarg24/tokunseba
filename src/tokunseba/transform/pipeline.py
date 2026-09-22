@@ -181,10 +181,11 @@ class Pipeline:
             return ""
         return self.handles.put(text)
 
-    def _materialize(self, norm: NormalizedRequest, msg_index: int, row: TransformRow, orig: str) -> str:
+    def _materialize(self, norm: NormalizedRequest, msg_index: int, row: TransformRow,
+                     orig: str, block_index: int | None = None) -> str:
         """A stored reference is only valid while the thing it points at is still in this request."""
         if row.kind in ("dedup_ref", "diff_ref") and row.ref_sha:
-            if dedup.find_reference(norm, msg_index, row.ref_sha) is None:
+            if dedup.find_reference(norm, msg_index, row.ref_sha, block_index) is None:
                 self.ledger.record_event("ref_dangling", {"kind": row.kind, "ref_sha": row.ref_sha[:12]})
                 return canonical.canonicalize(orig)
         return row.transformed
@@ -210,7 +211,7 @@ class Pipeline:
         if not self.cfg.lossless:
             return res
         for i, msg in enumerate(norm.messages):
-            for blk in msg.blocks:
+            for j, blk in enumerate(msg.blocks):
                 # An adapter that hands back a non-string body (a list of content
                 # parts, say) must cost a transform, never the whole request.
                 if blk.kind != "tool_result" or not isinstance(blk.text, str) or not blk.text:
@@ -219,8 +220,8 @@ class Pipeline:
                 sha = sha256_text(orig)
                 ob = self.est.count(orig, norm.provider, norm.model)
                 res.tokens_before += ob
-                ref = dedup.find_reference(norm, i, sha)
-                rr = None if ref else dedup.find_reread(norm, i, blk)
+                ref = dedup.find_reference(norm, i, sha, j)
+                rr = None if ref else dedup.find_reread(norm, i, blk, j)
                 key = self._key(sha, ref, rr)
                 row = self.table.get(key)
                 if row is None:
@@ -231,7 +232,7 @@ class Pipeline:
                         continue
                     row = self._transform(norm, i, blk, orig, sha, key, ob, ref, rr)
                     row = self.table.put(row)
-                text = self._materialize(norm, i, row, orig)
+                text = self._materialize(norm, i, row, orig, j)
                 if text != orig:
                     json_set(body, blk.path, text)
                     res.applied.append(Applied(str(blk.path), row.kind, row.orig_tokens,

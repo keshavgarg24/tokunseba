@@ -1,3 +1,4 @@
+import sys
 import json
 
 from click.testing import CliRunner
@@ -146,7 +147,7 @@ def test_doctor_runs_and_reports(home, tmp_path, monkeypatch):
 
 
 def test_run_wrapper_compresses(home):
-    r = run(["run", "--", "python", "-c",
+    r = run(["run", "--", sys.executable, "-c",
              "print('\\n'.join('line %d' % i for i in range(600)))"])
     assert r.exit_code == 0
     assert "tokunseba expand h_" in r.output
@@ -154,7 +155,7 @@ def test_run_wrapper_compresses(home):
 
 
 def test_run_wrapper_propagates_exit_code(home):
-    assert run(["run", "--", "python", "-c", "import sys; sys.exit(3)"]).exit_code == 3
+    assert run(["run", "--", sys.executable, "-c", "import sys; sys.exit(3)"]).exit_code == 3
 
 
 def test_doctor_does_not_eat_bracketed_hints(home, tmp_path, monkeypatch):

@@ -255,3 +255,54 @@ def test_reference_survives_history_compaction(pipe):
     after = build([("Read", "/a.py", big), ("Read", "/c.py", big)])
     r2 = p.apply(A.parse(after), after, 0, "s", "r2")
     assert text_at(r2.body, 3) == original, "renumbering produced a different replacement"
+
+
+def test_parallel_tool_calls_in_one_message_are_deduped(pipe):
+    """Claude Code returns every parallel tool result into a single user message.
+
+    Scanning only previous messages missed the commonest duplicate there is: the same file
+    read twice in one turn.
+    """
+    p, _cfg, _led = pipe
+    same = "\n".join(f"{i}\tdef f{i}(): return {i}" for i in range(200))
+    body = {"model": "claude-opus-5", "messages": [
+        {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "a", "name": "Read", "input": {"file_path": "/m0.py"}},
+            {"type": "tool_use", "id": "b", "name": "Read", "input": {"file_path": "/m1.py"}}]},
+        {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "a", "content": [{"type": "text", "text": same}]},
+            {"type": "tool_result", "tool_use_id": "b", "content": [{"type": "text", "text": same}]}]}]}
+    res = p.apply(A.parse(body), body, 0, "s", "r")
+    first = body["messages"][1]["content"][0]["content"][0]["text"]
+    second = body["messages"][1]["content"][1]["content"][0]["text"]
+    assert "identical to an earlier tool result" in second
+    assert "identical to an earlier tool result" not in first
+    assert res.tokens_after < res.tokens_before
+
+
+def test_a_reread_inside_one_message_becomes_a_diff(pipe):
+    p, _cfg, _led = pipe
+    v1 = "\n".join(f"line {i}" for i in range(300))
+    v2 = v1.replace("line 9", "line NINE")
+    body = {"model": "claude-opus-5", "messages": [
+        {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "a", "name": "Read", "input": {"file_path": "/x.py"}},
+            {"type": "tool_use", "id": "b", "name": "Read", "input": {"file_path": "/x.py"}}]},
+        {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "a", "content": [{"type": "text", "text": v1}]},
+            {"type": "tool_result", "tool_use_id": "b", "content": [{"type": "text", "text": v2}]}]}]}
+    p.apply(A.parse(body), body, 0, "s", "r")
+    second = body["messages"][1]["content"][1]["content"][0]["text"]
+    assert "changed since it was last read" in second and "line NINE" in second
+
+
+def test_the_first_block_of_a_message_is_never_a_reference_to_itself(pipe):
+    p, _cfg, _led = pipe
+    text = "\n".join(f"row {i}" for i in range(300))
+    body = {"model": "claude-opus-5", "messages": [
+        {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "a", "name": "Read", "input": {"file_path": "/only.py"}}]},
+        {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "a", "content": [{"type": "text", "text": text}]}]}]}
+    p.apply(A.parse(body), body, 0, "s", "r")
+    assert "identical to an earlier" not in body["messages"][1]["content"][0]["content"][0]["text"]

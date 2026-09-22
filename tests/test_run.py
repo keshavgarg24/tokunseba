@@ -152,7 +152,7 @@ def test_list_argv_runs_without_a_shell(home: Path) -> None:
     cfg, handles, estimator = _parts(home)
 
     # Shell metacharacters stay literal arguments when argv has several parts.
-    out, rc = run_command(["python", "-c", "print(1)"], cfg, handles, estimator)
+    out, rc = run_command([sys.executable, "-c", "print(1)"], cfg, handles, estimator)
 
     assert rc == 0
     assert out == "1\n"

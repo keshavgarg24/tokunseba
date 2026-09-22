@@ -194,4 +194,13 @@ def doctor(cfg: Any, ledger: Any) -> list[Check]:
         f"daily budget ${daily:.2f}" if daily else "no daily budget set",
     ))
 
+    try:
+        from ..health import conflicting_env
+        clash = conflicting_env(cfg.port)
+    except Exception:  # noqa: BLE001
+        clash = {}
+    checks.insert(0, Check(
+        "no conflicting base url", not clash,
+        "clean" if not clash else
+        ", ".join(f"{k}={v}" for k, v in clash.items()) + " overrides the settings file"))
     return checks

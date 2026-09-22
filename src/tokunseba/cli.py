@@ -85,8 +85,8 @@ def init(no_service: bool, no_hooks: bool, with_mcp: bool) -> None:
         console.print(f"  {escape(str(line))}")
 
     if not no_service:
-        path, state = service.install()
-        console.print(f"[bold]Service[/bold]\n  {path} ({state})")
+        path, state = service.install(cfg.port)
+        console.print(f"[bold]Service[/bold]\n  {escape(str(path))} ({escape(state)})")
 
     _print_tools(registry.detect_all())
     console.print("\nOpen a new shell so the environment block takes effect, then run: "
@@ -170,6 +170,7 @@ def status() -> None:
     cfg = config.load()
     up = running(cfg.port)
     console.print(_banner("status"))
+    _routing_warning()
     console.print(f"proxy: {'[green]running[/green]' if up else '[red]not running[/red]'} "
                   f"on 127.0.0.1:{cfg.port}")
     s = _ledger().stats(time.time() - 86400)
@@ -205,6 +206,18 @@ def uninstall() -> None:
     console.print(f"Data left in place at {config.home()} — delete it by hand if you want it gone.")
 
 
+def _routing_warning() -> None:
+    """Print the one sentence that explains an empty report, before the empty report."""
+    from .health import check
+    from .ui.terminal import style
+    try:
+        r = check(config.load(), _ledger())
+    except Exception:  # noqa: BLE001
+        return
+    if r.problem:
+        console.print(f"[{style('bad')}]not in the path[/]  {escape(r.problem)}\n")
+
+
 # --------------------------------------------------------------------------- reporting
 @main.command()
 @click.option("--since", default="7d", help="e.g. 24h, 7d, 30d")
@@ -214,6 +227,8 @@ def uninstall() -> None:
 def stats(since: str, project: str | None, ab: bool, as_json: bool) -> None:
     """Show what tokunseba saved."""
     led = _ledger()
+    if not as_json:
+        _routing_warning()
     s = led.stats(_since(since), project)
     if as_json:
         console.print_json(json.dumps(s))
@@ -356,9 +371,18 @@ def _dashboard(led: Ledger, since: str):
     live = (f"[{style('good')}]proxy running[/] [{style('dim')}]on 127.0.0.1:{cfg.port}[/]" if up
             else f"[{style('dim')}]proxy not running — start it with: tokunseba start[/]")
     dim = style("dim")
+
+    from .health import check
+    try:
+        problem = check(cfg, led).problem
+    except Exception:  # noqa: BLE001
+        problem = None
+    warning = f"[{style('bad')}]not in the path[/]  {escape(problem)}\n" if problem else ""
+
     return Group(
         _banner(f"last {since}"),
         live,
+        warning,
         "",
         stat_tiles(s),
         "",
@@ -489,6 +513,7 @@ def top(since: str, limit: int) -> None:
     wins = led.top_transforms(ts, limit)
     misses = led.biggest_passthroughs(ts, limit)
     console.print(_banner(f"top · last {since}"))
+    _routing_warning()
     console.print(f"\n[{style('dim')}]biggest savings[/]")
     console.print(transform_table(wins))
     console.print(f"\n[{style('dim')}]biggest untouched blocks — "

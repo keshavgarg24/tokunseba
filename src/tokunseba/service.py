@@ -14,10 +14,23 @@ from .config import home
 LABEL = "dev.tokunseba.proxy"
 
 
+TRANSIENT = ("/.cache/uv/builds-v0/", "/.tmp", "/pytest-of-", "/T/tmp")
+
+
 def executable() -> str:
+    """A path that will still exist tomorrow.
+
+    `which` can resolve to a uv build sandbox that is deleted the moment the build finishes.
+    Baking that into a launch agent produces a service that silently never starts again.
+    """
     exe = shutil.which("tokunseba")
-    if exe:
+    if exe and not any(bit in exe for bit in TRANSIENT):
         return exe
+    for candidate in (Path.home() / ".local/bin/tokunseba",
+                      Path("/usr/local/bin/tokunseba"),
+                      Path("/opt/homebrew/bin/tokunseba")):
+        if candidate.exists():
+            return str(candidate)
     return f"{sys.executable} -m tokunseba.cli"
 
 
@@ -91,20 +104,35 @@ def _run(cmd: list[str]) -> tuple[int, str]:
         return 1, str(exc)
 
 
-def install() -> tuple[Path, str]:
+def install(port: int | None = None) -> tuple[Path, str]:
+    """Write and load the background service.
+
+    A proxy already listening on the port is the common case, not an error: the user very
+    likely started one by hand. Say that instead of surfacing a raw launchctl code.
+    """
     if platform.system() == "Darwin":
         p = plist_path()
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(_plist_xml())
         _run(["launchctl", "bootout", f"gui/{os.getuid()}/{LABEL}"])
         code, out = _run(["launchctl", "bootstrap", f"gui/{os.getuid()}", str(p)])
-        return p, ("loaded" if code == 0 else f"written, load failed: {out[:160]}")
+        if code == 0:
+            return p, "loaded"
+        if port is not None and running(port):
+            return p, (f"written; a proxy is already listening on {port}. Stop it and run "
+                       f"`tokunseba start` to hand over to the service.")
+        return p, f"written, load failed: {out[:160]}"
     p = unit_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(_unit_text())
     _run(["systemctl", "--user", "daemon-reload"])
     code, out = _run(["systemctl", "--user", "enable", "--now", "tokunseba"])
-    return p, ("started" if code == 0 else f"written, start failed: {out[:160]}")
+    if code == 0:
+        return p, "started"
+    if port is not None and running(port):
+        return p, (f"written; a proxy is already listening on {port}. Stop it and run "
+                   f"`tokunseba start` to hand over to the service.")
+    return p, f"written, start failed: {out[:160]}"
 
 
 def uninstall() -> str:
