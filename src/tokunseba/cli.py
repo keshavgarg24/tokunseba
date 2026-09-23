@@ -801,6 +801,111 @@ def statusline() -> None:
     click.echo(" · ".join(parts))
 
 
+@main.command()
+@click.option("--since", default="7d", show_default=True)
+@click.option("--limit", default=500, show_default=True,
+              help="Most recent requests to replay.")
+@click.option("--tier", "tiers", multiple=True, type=click.Choice(["1", "2"]),
+              help="Replay as though only these tiers were on. Repeatable.")
+@click.option("--set", "overrides", multiple=True, metavar="KEY=VALUE",
+              help="Override one setting for the replay only, e.g. "
+                   "thresholds.truncate_tokens=3000. Repeatable.")
+@click.option("--verbose", is_flag=True, help="List the requests that would change.")
+def replay(since: str, limit: int, tiers: tuple[str, ...], overrides: tuple[str, ...],
+           verbose: bool) -> None:
+    """Re-run recorded traffic under a different configuration, and report the difference.
+
+    Nothing is sent anywhere and nothing of yours is written: the replay works from the
+    request bodies already on disk, and its ledger and blob store live in a temporary
+    directory that is deleted when it finishes. It is the way to find out what a setting
+    would do to your own work before committing to it.
+
+    Tier 3 is not replayed. It decides which model answers, and no offline pass can know
+    what a different model would have said. Use `tokunseba advise` for that question.
+    """
+    from . import replay as replay_mod
+    from .ui.terminal import k, style
+
+    cfg = config.load()
+    if tiers:
+        cfg.lossless = "1" in tiers
+        cfg.reach_preserving = "2" in tiers
+    for item in overrides:
+        key, sep, value = item.partition("=")
+        if not sep:
+            err.print(f"--set wants KEY=VALUE, got: {item}")
+            raise SystemExit(1)
+        try:
+            config.apply_override(cfg, key.strip(), value)
+        except (KeyError, ValueError):
+            err.print(f"unknown or unusable key: {key.strip()}")
+            raise SystemExit(1) from None
+    cfg.tier3 = False   # an offline pass cannot know what another model would have replied
+
+    led = _ledger()
+    console.print(_banner("replay"))
+    rows = led.requests_in_order(_since(since), limit)
+    if not rows:
+        console.print(f"[dim]No requests recorded in the last {escape(since)}.[/dim]")
+        return
+    res = replay_mod.run(cfg, rows, config.home() / "bodies")
+    if not res.turns:
+        console.print("[dim]None of those requests kept a body, so there is nothing to "
+                      "replay. Request bodies must be stored (proxy.store_bodies) and are "
+                      "pruned on their own schedule (tokunseba retention show).[/dim]")
+        return
+
+    tier_line = ("tier " + " and ".join(sorted(tiers))) if tiers else "the current tiers"
+    console.print(f"[dim]{res.replayed} requests replayed under {escape(tier_line)}"
+                  + (", " + escape(", ".join(overrides)) if overrides else "") + ".[/dim]")
+    if res.no_body or res.unreadable:
+        console.print(f"[dim]{res.no_body} had no stored body and {res.unreadable} could "
+                      f"not be read; both are left out of every figure below.[/dim]")
+
+    t = Table(box=None, header_style="dim", pad_edge=False)
+    t.add_column("")
+    t.add_column("tokens removed", justify="right")
+    t.add_row("as it ran", k(res.was_saved))
+    t.add_row("as configured here", k(res.would_save))
+    tone = style("good") if res.change > 0 else style("warn") if res.change < 0 else "dim"
+    t.add_row("difference", f"[{tone}]{'+' if res.change > 0 else ''}{k(res.change)}[/]")
+    console.print(t)
+
+    if res.by_kind:
+        b = Table(box=None, header_style="dim", pad_edge=False)
+        b.add_column("transform")
+        b.add_column("blocks", justify="right")
+        for kind, count in res.by_kind.most_common():
+            b.add_row(escape(str(kind)), k(count))
+        console.print("")
+        console.print(b)
+
+    changed = res.changed
+    console.print("")
+    if not changed:
+        console.print("[dim]Not one request would come out different. Whatever you changed "
+                      "does not reach this traffic.[/dim]")
+        return
+    console.print(f"[dim]{len(changed)} of {res.replayed} requests would come out "
+                  f"different.[/dim]")
+    if not verbose:
+        console.print("[dim]Re-run with --verbose to see which, or "
+                      "tokunseba explain <request-id> for one of them.[/dim]")
+        return
+    d = Table(box=None, header_style="dim", pad_edge=False)
+    d.add_column("request")
+    d.add_column("model", overflow="fold")
+    d.add_column("was", justify="right")
+    d.add_column("would be", justify="right")
+    d.add_column("change", justify="right")
+    for turn in res.biggest(20):
+        tone = style("good") if turn.change > 0 else style("warn")
+        d.add_row(escape(turn.request_id), escape(turn.model or "-"),
+                  k(turn.was_saved), k(turn.would_save),
+                  f"[{tone}]{'+' if turn.change > 0 else ''}{k(turn.change)}[/]")
+    console.print(d)
+
+
 def _context_of(turn) -> int:
     """Everything one turn made the model read, cache included."""
     return int(turn.input_tokens + turn.cache_read + turn.cache_write)
@@ -946,38 +1051,17 @@ def config_show(path_only: bool) -> None:
     click.echo(p.read_text())
 
 
-SECTION_ALIASES = {"tier3": "tier3_opts", "thresholds": "thresholds", "judge": "judge",
-                   "budget": "budget", "failover": "failover", "retention": "retention"}
-
-
 @config_cmd.command("set")
 @click.argument("key")
 @click.argument("value")
 def config_set(key: str, value: str) -> None:
     """Set a value, e.g. tokunseba config set tiers.tier3 true"""
     cfg = config.load()
-    section, _, name = key.partition(".")
-    if name and section in SECTION_ALIASES:
-        target, attr = getattr(cfg, SECTION_ALIASES[section]), name
-    elif name and section in ("proxy", "tiers"):
-        target, attr = cfg, name
-    else:
-        target, attr = cfg, section
-    if not hasattr(target, attr):
+    try:
+        _, new = config.apply_override(cfg, key, value)
+    except KeyError:
         err.print(f"unknown key: {key}")
-        raise SystemExit(1)
-    current = getattr(target, attr)
-    if isinstance(current, bool):
-        new = value.strip().lower() in ("1", "true", "yes", "on")
-    elif isinstance(current, int):
-        new = int(value)
-    elif isinstance(current, float):
-        new = float(value)
-    elif isinstance(current, list):
-        new = [v.strip() for v in value.split(",") if v.strip()]
-    else:
-        new = value
-    setattr(target, attr, new)
+        raise SystemExit(1) from None
     config.save(cfg)
     console.print(f"{key} = {new}")
 

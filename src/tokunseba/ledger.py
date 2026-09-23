@@ -334,6 +334,23 @@ class Ledger:
                 "cache_write", "output_tokens")
         return [dict(zip(keys, r[:-1])) for r in rows]
 
+    def requests_in_order(self, since_ts: float, limit: int = 500) -> list[dict]:
+        """Every recorded request in the window, oldest first.
+
+        Oldest first matters: a replay has to walk a conversation in the order it
+        happened or the prefix it measures against is the wrong one. The newest
+        `limit` rows are taken and then reversed, so asking for fewer gives you the
+        most recent traffic rather than the traffic from whenever you started.
+        """
+        rows = self._conn.execute(
+            """SELECT id, ts, session_id, model, provider, tool_id,
+                      est_tokens_before, est_tokens_after
+               FROM requests WHERE ts>=? ORDER BY ts DESC LIMIT ?""",
+            (since_ts, limit)).fetchall()
+        keys = ("id", "ts", "session_id", "model", "provider", "tool_id",
+                "est_before", "est_after")
+        return [dict(zip(keys, r)) for r in reversed(rows)]
+
     # --- analysis queries -------------------------------------------------
     # Everything below is deliberately plan-agnostic: tokens, ratios and cache behaviour mean
     # the same thing on every kind of access, so nothing here has to know which one this is.

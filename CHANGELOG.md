@@ -23,6 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   upstream's own adapter on the upstream's own bytes, so the ledger stays exact. Every
   translated turn records a `protocol_translated` signal. A pair with no translator is
   still refused and recorded rather than attempted.
+- `tokunseba replay`: re-run recorded traffic under a configuration you have not committed
+  to, and report what would have been different. It works from the request bodies already
+  on disk, walks each conversation in the order it happened so the prefix every decision
+  rests on is the real one, and sends nothing anywhere. Its ledger and blob store live in a
+  temporary directory that is removed on the way out, so a replay cannot write a handle, an
+  event, a frozen replacement or a learned token ratio into real history. `--tier`, `--set`
+  and `--verbose` cover "what would tier 2 have caught", "what would this threshold do" and
+  "which requests, so I can read one". Tier 3 is not replayed: it decides which model
+  answers, and no offline pass can know what a different model would have said.
+- `ledger.requests_in_order` and `config.apply_override`, which `replay` needs and
+  `config set` now shares.
 - `tokunseba apps` for applications launched from the Dock, Spotlight or a desktop
   menu. Such an application is started by the operating system rather than by a shell,
   so it never reads the shell profile `init` writes to and silently goes straight to

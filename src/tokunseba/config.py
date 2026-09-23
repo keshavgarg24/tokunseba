@@ -128,6 +128,44 @@ class Config:
         return f"{root}/{prefix}" if prefix else root
 
 
+#: `config set` and `replay --set` take the same dotted key, so the mapping from a section
+#: name to the attribute holding it is written down once.
+SECTION_ALIASES: dict[str, str] = {
+    "tier3": "tier3_opts", "thresholds": "thresholds", "judge": "judge",
+    "budget": "budget", "failover": "failover", "retention": "retention",
+}
+
+
+def apply_override(cfg: "Config", key: str, value: str) -> tuple[str, object]:
+    """Set one dotted key on `cfg` in place, coercing to the type already there.
+
+    Raises KeyError with the offending key when it names nothing, so the caller decides
+    whether that is a usage error or a skipped line.
+    """
+    section, _, name = key.partition(".")
+    if name and section in SECTION_ALIASES:
+        target, attr = getattr(cfg, SECTION_ALIASES[section]), name
+    elif name and section in ("proxy", "tiers"):
+        target, attr = cfg, name
+    else:
+        target, attr = cfg, section
+    if not hasattr(target, attr):
+        raise KeyError(key)
+    current = getattr(target, attr)
+    if isinstance(current, bool):
+        new = value.strip().lower() in ("1", "true", "yes", "on")
+    elif isinstance(current, int):
+        new = int(value)
+    elif isinstance(current, float):
+        new = float(value)
+    elif isinstance(current, list):
+        new = [v.strip() for v in value.split(",") if v.strip()]
+    else:
+        new = value
+    setattr(target, attr, new)
+    return key, new
+
+
 def default_path() -> Path:
     return home() / "config.toml"
 

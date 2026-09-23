@@ -7,7 +7,7 @@
 [![PyPI](https://img.shields.io/pypi/v/tokunseba)](https://pypi.org/project/tokunseba/)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-751%20passing-brightgreen)](#development)
+[![Tests](https://img.shields.io/badge/tests-765%20passing-brightgreen)](#development)
 [![Local only](https://img.shields.io/badge/network-localhost%20only-lightgrey)](#privacy-and-safety)
 
 </div>
@@ -93,6 +93,31 @@ How much tokunseba is allowed to do is a decision you make one layer at a time. 
 | 3 opt-in | off | Which model answers, and the text of a request. Routes easy turns to smaller or local models, redacts credentials, labels suspected prompt injection. |
 
 Tier 3 is the only tier that can change an answer. It is off until you turn it on, and when it is on, sessions are randomly split between a control arm and a treatment arm so the ledger can tell you whether it actually helped.
+
+## Try a setting before you commit to it
+
+Every setting above comes with the same question, and no README can answer it: what would this have done to *my* work? A number measured on somebody else's repository is not an answer.
+
+`tokunseba replay` re-runs traffic that already happened under a configuration you have not committed to, from the request bodies already on disk. Nothing is sent anywhere.
+
+```
+$ tokunseba replay --since 7d --tier 1
+
+3 requests replayed under tier 1.
+                    tokens removed
+as it ran                        0
+as configured here            4.2k
+difference                   +4.2k
+
+transform  blocks
+dedup_ref       1
+
+1 of 3 requests would come out different.
+```
+
+Add `--tier 2` to see what the summarisers would have caught, `--set thresholds.truncate_lines=120` to try one knob, and `--verbose` to get the request ids so you can read any one of them with `tokunseba explain`.
+
+Nothing of yours is written. The replay's ledger and blob store live in a temporary directory that is removed when it finishes, so it cannot leave a handle, an event, a frozen replacement or a learned token ratio behind. Tier 3 is deliberately not replayed: it decides which model answers, and no offline pass can know what a different model would have said. `tokunseba advise` is the command for that question.
 
 ## Prompt-driven routing
 
@@ -283,6 +308,7 @@ tokunseba prune --days 30      delete everything older than that, now
 **Other**
 
 ```
+tokunseba replay               re-run recorded traffic under a setting you have not committed to
 tokunseba run -- pytest -q     run a command with its output already compressed
 tokunseba wrap claude          run one tool through the proxy, no config change
 tokunseba mcp                  MCP server exposing the expand tool
