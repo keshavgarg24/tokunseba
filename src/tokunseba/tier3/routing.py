@@ -10,14 +10,16 @@ of every heuristic here is "no change".
 """
 from __future__ import annotations
 
+from ..protocols import translate
 from .effort import is_easy
 
 LOCAL_OK_DOMAINS = {"chitchat", "writing"}
 
-# Which upstreams can receive a request that arrived in a given protocol. tokunseba rewrites
-# a body, it does not translate between protocols, so anything not listed here would send an
-# Anthropic-shaped body to an OpenAI-shaped endpoint and get a 400 back. Ollama is reachable
-# from OpenAI clients because it serves an OpenAI-compatible route.
+# Which upstreams can receive a request that arrived in a given protocol, without anything
+# being rewritten beyond the body. Ollama appears under OpenAI because it serves an
+# OpenAI-compatible route. Pairs outside this table are still reachable when
+# `protocols.translate` knows how to convert between them; everything else is refused here
+# rather than sent and 400'd.
 COMPATIBLE: dict[str, set[str]] = {
     "anthropic": {"anthropic"},
     "openai": {"openai", "ollama"},
@@ -27,7 +29,7 @@ COMPATIBLE: dict[str, set[str]] = {
 
 
 def compatible(provider: str, kind: str) -> bool:
-    return kind in COMPATIBLE.get(provider, {provider})
+    return kind in COMPATIBLE.get(provider, {provider}) or translate.can(provider, kind)
 
 
 def match(rule: dict, signals: dict) -> bool:
@@ -109,8 +111,9 @@ def apply(norm, body: dict, signals: dict, cfg) -> tuple[str | None, str]:
     if not is_easy(signals):
         return None, "not-easy"
 
-    if o.local_routing and o.local_model and norm.provider == "openai":
-        if signals.get("domain") in LOCAL_OK_DOMAINS:
+    if o.local_routing and o.local_model and signals.get("domain") in LOCAL_OK_DOMAINS:
+        local = cfg.upstreams.get("ollama")
+        if local is not None and compatible(norm.provider, local.kind):
             body["model"] = o.local_model
             return "ollama", "local_routed"
 

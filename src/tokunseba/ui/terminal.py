@@ -42,6 +42,8 @@ EVENT_HELP: dict[str, str] = {
     "rule_routed": "a first turn matched a routing rule and went to the model it named",
     "route_refused": "a routing rule matched but its target could not be used, so the "
                      "turn was left alone",
+    "protocol_translated": "a turn was rewritten into the protocol its new upstream "
+                           "speaks, and the reply was rewritten back",
     "failover_used": "the upstream failed and the same model was retried elsewhere",
     "passthrough_after_error": "a bug in tokunseba was hit, so the request was forwarded "
                                "exactly as the tool sent it",
@@ -55,7 +57,7 @@ EVENT_TONE: dict[str, str] = {
     "upstream_error": "bad", "judge_error": "warn", "context_overflow_risk": "warn",
     "cache_injected": "good", "failover_used": "warn", "ttl_advice": "warn",
     "effort_set": "good", "model_routed": "good", "local_routed": "good",
-    "rule_routed": "good", "route_refused": "warn",
+    "rule_routed": "good", "route_refused": "warn", "protocol_translated": "good",
     "route_signal": "", "injection_corroborated": "warn", "secret_redacted": "good",
     "record_error": "bad", "passthrough_after_error": "bad", "pruned": "good",
 }

@@ -16,6 +16,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from . import config
+from .protocols import translate
 from .tier3 import routing
 
 console = Console()
@@ -158,13 +159,18 @@ def register(main: click.Group) -> None:
                       f"{escape(routing.describe(rule))}")
         if upstream:
             kind = cfg.upstreams[upstream].kind
-            incompatible = [p for p in ("anthropic", "openai", "gemini")
-                            if not routing.compatible(p, kind)]
-            if incompatible:
-                console.print(f"[dim]This target speaks {escape(kind)}. Requests arriving as "
-                              f"{escape(', '.join(incompatible))} are left alone rather than "
-                              "translated, so the rule only fires for compatible clients."
-                              "[/dim]")
+            arriving = ("anthropic", "openai", "gemini", "ollama")
+            translated = [p for p in arriving if p != kind and translate.can(p, kind)]
+            blocked = [p for p in arriving if not routing.compatible(p, kind)]
+            console.print(f"[dim]This target speaks {escape(kind)}.[/dim]", end=" ")
+            if translated:
+                console.print(f"[dim]A request arriving as {escape(', '.join(translated))} is "
+                              "translated on the way out and its reply translated back.[/dim]",
+                              end=" ")
+            if blocked:
+                console.print(f"[dim]A request arriving as {escape(', '.join(blocked))} is left "
+                              "alone, so the rule does not fire for it.[/dim]", end="")
+            console.print()
         if not cfg.tier3:
             console.print("\n[yellow]Tier 3 is off, so no rule fires yet.[/yellow] "
                           "Turn it on with: [bold]tokunseba route enable[/bold]")
@@ -274,11 +280,11 @@ def register(main: click.Group) -> None:
                           f"{escape(rule['upstream'])} is not configured.[/red]")
             return
         if target is not None and not routing.compatible(provider, target.kind):
-            console.print(f"\n[yellow]Rule matches, but requests arriving as "
+            console.print(f"\n[yellow]Rule matches, but a request arriving as "
                           f"{escape(provider)} cannot be sent to an upstream speaking "
-                          f"{escape(target.kind)} without translating them, so the turn "
-                          "would be left alone.[/yellow]\n[dim]A rule with --model and no "
-                          "--to swaps the model within the same provider, which works "
+                          f"{escape(target.kind)}:[/yellow] there is no translator for that "
+                          "pair, so the turn would be left alone.\n[dim]A rule with --model "
+                          "and no --to swaps the model within the same provider, which works "
                           "everywhere.[/dim]")
             return
         where = rule.get("upstream") or "the same upstream"
@@ -286,6 +292,10 @@ def register(main: click.Group) -> None:
         console.print(f"\n[bold]Matches:[/bold] {escape(routing.describe(rule))}")
         console.print(f"This turn would go to [green]{escape(where)}[/green] asking for "
                       f"[green]{escape(what)}[/green].")
+        if target is not None and translate.can(provider, target.kind):
+            console.print(f"[dim]It arrives as {escape(provider)}, so the request is "
+                          f"translated to {escape(target.kind)} on the way out and the reply "
+                          "is translated back. The client sees no difference.[/dim]")
         if not cfg.tier3:
             console.print("[dim]Routing is off, so today it would not. "
                           "Turn it on with: tokunseba route enable[/dim]")

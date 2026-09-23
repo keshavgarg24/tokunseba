@@ -15,7 +15,7 @@ from rich.table import Table
 
 from . import config
 from .config import DEFAULT_UPSTREAMS, Upstream
-from .tier3.routing import COMPATIBLE
+from .tier3.routing import COMPATIBLE, compatible
 
 console = Console()
 err = Console(stderr=True)
@@ -68,7 +68,7 @@ def reachable(base_url: str) -> tuple[bool, str]:
 
 def _reaches(kind: str) -> str:
     """Which arriving protocols may be rerouted to an upstream speaking `kind`."""
-    inbound = sorted(a for a, allowed in COMPATIBLE.items() if kind in allowed)
+    inbound = sorted(a for a in COMPATIBLE if compatible(a, kind))
     return ", ".join(inbound) or "-"
 
 

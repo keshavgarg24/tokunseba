@@ -24,7 +24,7 @@ from .config import Config, home
 from .guards import injection, secrets
 from .judge import build_chain, router_questions
 from .ledger import Ledger, RequestRecord
-from .protocols import ADAPTERS
+from .protocols import ADAPTERS, translate
 from .protocols.base import json_get, json_set
 from .session import SessionIndex
 from .sse import NDJSONCollector, SSECollector
@@ -457,6 +457,8 @@ def build_app(cfg: Config, ledger: Ledger, transport=None) -> Starlette:
         t0 = time.monotonic()
         norm = None
         target = up
+        xlate = ""   # the upstream protocol this reply has to be translated back from
+        xlate_in = 0
         if body is not None:
             norm = adapter.parse(body)
             if up.kind == "gemini" and not norm.model:
@@ -470,14 +472,31 @@ def build_app(cfg: Config, ledger: Ledger, transport=None) -> Starlette:
                         return JSONResponse(BUDGET_BODY, status_code=429)
             try:
                 body, reroute = await proxy.before(adapter, norm, body, ctx)
-                if reroute and reroute in cfg.upstreams:
-                    target = cfg.upstreams[reroute]
-                    sub = "/v1/chat/completions"
                 model_was = norm.model
                 norm = adapter.parse(body)
                 if not norm.model:
                     norm.model = model_was
+                # Reading the request in the protocol the client used has to happen before
+                # its shape changes, which is why the reroute lands below the parse.
+                if reroute and reroute in cfg.upstreams:
+                    target = cfg.upstreams[reroute]
+                    if target.kind != up.kind:
+                        sub = translate.SUB_PATH.get(target.kind, sub)
+                        if translate.can(up.kind, target.kind):
+                            body = translate.request(up.kind, target.kind, body)
+                            xlate = target.kind
+                            ledger.record_event("protocol_translated",
+                                                {"from": up.kind, "to": target.kind,
+                                                 "upstream": reroute, "model": norm.model},
+                                                ctx.session_id, ctx.request_id)
                 raw = json.dumps(body).encode()
+                if xlate:
+                    # Claude Code draws its context meter from the input_tokens on
+                    # message_start, and OpenAI reports usage only at the end of a stream,
+                    # so the opening figure has to be ours. The pipeline's count is not it:
+                    # that one totals what the transforms rewrote, which is zero on a turn
+                    # they left alone. Count the body that is actually going out.
+                    xlate_in = proxy.est.count(raw.decode(), target.kind, norm.model)
             except Exception as exc:  # noqa: BLE001
                 # Optimising a request is never worth failing it. Forward exactly what the
                 # client sent and make the bug loud in the ledger rather than in their editor.
@@ -520,25 +539,32 @@ def build_app(cfg: Config, ledger: Ledger, transport=None) -> Starlette:
                 resp = await proxy.client.send(alt_req, stream=True)
                 ledger.record_event("failover_used", {"model": norm.model}, ctx.session_id, ctx.request_id)
 
+        # What arrives is in the upstream's protocol whether or not the client speaks it, so
+        # the usage is always read with the upstream's adapter and the ledger stays exact.
+        reader = (proxy._adapter(target.kind, sub) or adapter) if xlate else adapter
+
         ctype = resp.headers.get("content-type", "")
         streaming = body is not None and (ctype.startswith("text/event-stream")
                                           or ctype.startswith("application/x-ndjson"))
         if streaming:
             collector = SSECollector() if ctype.startswith("text/event-stream") else NDJSONCollector()
+            framer = translate.stream(up.kind, xlate, norm.model, xlate_in) if xlate else None
 
             async def tee():
                 try:
                     async for chunk in resp.aiter_raw():
                         collector.feed(chunk)
-                        yield chunk
+                        yield framer.feed(chunk) if framer is not None else chunk
+                    if framer is not None:
+                        yield framer.close()
                 finally:
                     collector.close()
                     try:
                         if isinstance(collector, SSECollector):
-                            usage = adapter.usage_from_sse(collector.events)
+                            usage = reader.usage_from_sse(collector.events)
                         else:
-                            fn = getattr(adapter, "usage_from_ndjson", None)
-                            usage = fn(collector.objects) if fn else adapter.usage_from_sse(
+                            fn = getattr(reader, "usage_from_ndjson", None)
+                            usage = fn(collector.objects) if fn else reader.usage_from_sse(
                                 [("", o) for o in collector.objects])
                         proxy.finish(usage, norm, ctx, resp.status_code, t0)
                     except Exception as exc:  # noqa: BLE001
@@ -551,12 +577,23 @@ def build_app(cfg: Config, ledger: Ledger, transport=None) -> Starlette:
 
         content = await resp.aread()
         await resp.aclose()
-        if body is not None and resp.status_code < 300:
+        try:
+            parsed = json.loads(content) if content else None
+        except ValueError:
+            parsed = None
+        payload = parsed if isinstance(parsed, dict) else None
+        if body is not None and resp.status_code < 300 and payload is not None:
             try:
-                proxy.finish(adapter.usage_from_json(json.loads(content)), norm, ctx,
-                             resp.status_code, t0)
+                proxy.finish(reader.usage_from_json(payload), norm, ctx, resp.status_code, t0)
             except (ValueError, TypeError):
                 pass
+        if xlate and payload is not None:
+            # A failure is exactly when the client most needs a message it can read, so the
+            # error envelope is translated too rather than passed through as-is.
+            back = (translate.response(up.kind, xlate, payload, norm.model)
+                    if resp.status_code < 300
+                    else translate.error_to_anthropic(payload, resp.status_code))
+            content = json.dumps(back).encode()
         return Response(content, status_code=resp.status_code,
                         headers=passthrough_headers(resp.headers))
 

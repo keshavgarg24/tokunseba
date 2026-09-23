@@ -91,9 +91,19 @@ def test_routing_does_nothing_while_tier3_is_off(home):
     assert body["model"] == "claude-opus-5"
 
 
-def test_a_cross_protocol_target_is_refused_not_attempted(home):
-    """The proxy rewrites bodies, it does not translate between providers."""
+def test_an_anthropic_client_may_reach_a_local_model(home):
+    """The point of the whole tier: Claude Code speaks one protocol, and a rule can still
+    send a throwaway turn to whatever is running on the machine."""
     cfg = cfg_with(home, [{"domain": "chitchat", "upstream": "ollama", "model": "llama3.1"}])
+    body = {"model": "claude-opus-5"}
+    up, reason = routing.apply(Norm(provider="anthropic"), body, {"domain": "chitchat"}, cfg)
+    assert (up, reason) == ("ollama", "rule_routed")
+    assert body["model"] == "llama3.1"
+
+
+def test_a_pair_with_no_translator_is_refused_not_attempted(home):
+    """Sending a body nothing can convert would be a 400 in the user's editor."""
+    cfg = cfg_with(home, [{"domain": "chitchat", "upstream": "gemini", "model": "flash"}])
     body = {"model": "claude-opus-5"}
     up, reason = routing.apply(Norm(provider="anthropic"), body, {"domain": "chitchat"}, cfg)
     assert up is None
@@ -175,10 +185,11 @@ def test_add_warns_that_tier3_is_off(home):
     assert "Tier 3 is off" in out
 
 
-def test_add_warns_about_a_cross_protocol_target(home):
+def test_add_says_which_clients_the_target_can_serve(home):
     out = flat(run(["route", "add", "--domain", "chitchat", "--to", "ollama",
                     "--model", "llama3.1"]))
-    assert "anthropic" in out and "translated" in out
+    assert "arriving as anthropic is translated" in out
+    assert "arriving as gemini is left alone" in out
 
 
 def test_enable_asks_first_and_disable_keeps_the_rules(home):
@@ -221,11 +232,18 @@ def test_test_reports_where_a_matching_turn_would_go(home):
 
 
 def test_test_warns_when_the_protocols_do_not_line_up(home):
+    run(["route", "add", "--domain", "chitchat", "--to", "gemini", "--model", "flash"])
+    out = flat(run(["route", "test", "--provider", "anthropic", "hey there"]))
+    assert "cannot be sent" in out and "no translator" in out
+
+
+def test_test_says_when_a_turn_would_be_translated(home):
     run(["route", "add", "--domain", "chitchat", "--to", "ollama", "--model", "llama3.1"])
     out = flat(run(["route", "test", "--provider", "anthropic", "hey there"]))
-    assert "cannot be sent" in out
-    out = flat(run(["route", "test", "--provider", "openai", "hey there"]))
     assert "would go to ollama" in out
+    assert "translated to ollama" in out
+    out = flat(run(["route", "test", "--provider", "openai", "hey there"]))
+    assert "would go to ollama" in out and "translated to ollama" not in out
 
 
 def test_test_sends_nothing_and_loads_nothing(home, monkeypatch):
