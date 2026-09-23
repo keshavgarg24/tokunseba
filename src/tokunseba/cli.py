@@ -95,7 +95,11 @@ def init(no_service: bool, no_hooks: bool, with_mcp: bool, yes: bool, dry_run: b
     for line in registry.plan_all(cfg, hooks=not no_hooks, mcp=with_mcp):
         console.print(f"  {escape(line)}")
     if not no_service:
-        console.print(f"  install and load the background service at {escape(str(_service_path()))}")
+        where = _service_path()
+        console.print(f"  install and load the background service at {escape(str(where))}"
+                      if where else
+                      "  nothing: this machine has no user service manager, so the proxy "
+                      "runs in the foreground")
     console.print(
         "\n[dim]Needs: nothing but this machine. No account, no key, no network call, "
         "nothing uploaded. Each tool config is copied to "
@@ -117,7 +121,9 @@ def init(no_service: bool, no_hooks: bool, with_mcp: bool, yes: bool, dry_run: b
 
     if not no_service:
         path, state = service.install(cfg.port)
-        console.print(f"[bold]Service[/bold]\n  {escape(str(path))} ({escape(state)})")
+        console.print("[bold]Service[/bold]\n  "
+                      + (f"{escape(str(path))} ({escape(state)})" if path
+                         else f"[yellow]{escape(state)}[/yellow]"))
 
     _print_tools(registry.detect_all())
     console.print("\nOpen a new shell so the environment block takes effect, then run: "
@@ -126,9 +132,8 @@ def init(no_service: bool, no_hooks: bool, with_mcp: bool, yes: bool, dry_run: b
 
 def _service_path():
     """Where the background service file goes, without importing service until asked."""
-    from .service import plist_path, unit_path
-    import platform
-    return plist_path() if platform.system() == "Darwin" else unit_path()
+    from .service import plist_path, supervisor, unit_path
+    return {"launchd": plist_path, "systemd": unit_path}.get(supervisor(), lambda: None)()
 
 
 def _print_tools(tools) -> None:
@@ -178,7 +183,10 @@ def start(foreground: bool, warm_judge: bool) -> None:
         return
     if not foreground:
         path, state = install()
-        console.print(f"Started via {path} ({state})")
+        if path is None:
+            err.print(f"[yellow]{escape(state)}[/yellow]")
+            raise SystemExit(1)
+        console.print(f"Started via {escape(str(path))} ({escape(state)})")
         return
     app = build_app(cfg, _ledger())
     if warm_judge and not cfg.judge.enabled:
@@ -226,6 +234,9 @@ def restart() -> None:
     from . import service
     console.print(service.stop())
     path, state = service.install(config.load().port)
+    if path is None:
+        err.print(f"[yellow]{escape(state)}[/yellow]")
+        raise SystemExit(1)
     console.print(f"Started via {escape(str(path))} ({escape(state)})")
 
 

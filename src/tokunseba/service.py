@@ -34,6 +34,27 @@ def executable() -> str:
     return f"{sys.executable} -m tokunseba.cli"
 
 
+def supervisor() -> str | None:
+    """Which user-level service manager can keep the proxy alive here, if any.
+
+    macOS has launchd and most Linux desktops have a systemd user instance. Windows has
+    neither, and writing a systemd unit into a Windows home and then failing to run
+    `systemctl` is worse than admitting it: the file is inert, and the message that comes
+    back is a Win32 error about a missing executable rather than anything a person can act
+    on. Returning None makes every caller say the true thing instead.
+    """
+    if platform.system() == "Darwin":
+        return "launchd"
+    if platform.system() == "Linux":
+        return "systemd"
+    return None
+
+
+NO_SUPERVISOR = ("there is no user service manager here, so there is nothing to keep the "
+                 "proxy alive in the background. Run it yourself with: "
+                 "tokunseba start --foreground")
+
+
 def plist_path() -> Path:
     return Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
 
@@ -104,13 +125,15 @@ def _run(cmd: list[str]) -> tuple[int, str]:
         return 1, str(exc)
 
 
-def install(port: int | None = None) -> tuple[Path, str]:
+def install(port: int | None = None) -> tuple[Path | None, str]:
     """Write and load the background service.
 
     A proxy already listening on the port is the common case, not an error: the user very
     likely started one by hand. Say that instead of surfacing a raw launchctl code.
     """
-    if platform.system() == "Darwin":
+    if supervisor() is None:
+        return None, NO_SUPERVISOR
+    if supervisor() == "launchd":
         p = plist_path()
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(_plist_xml())
@@ -136,7 +159,9 @@ def install(port: int | None = None) -> tuple[Path, str]:
 
 
 def uninstall() -> str:
-    if platform.system() == "Darwin":
+    if supervisor() is None:
+        return "no background service was installed here"
+    if supervisor() == "launchd":
         _run(["launchctl", "bootout", f"gui/{os.getuid()}/{LABEL}"])
         plist_path().unlink(missing_ok=True)
         return "launchd agent removed"
@@ -146,7 +171,10 @@ def uninstall() -> str:
 
 
 def stop() -> str:
-    if platform.system() == "Darwin":
+    if supervisor() is None:
+        return ("nothing to stop: the proxy only runs in the foreground here, so stop it "
+                "in the window it is running in")
+    if supervisor() == "launchd":
         code, out = _run(["launchctl", "bootout", f"gui/{os.getuid()}/{LABEL}"])
         return "stopped" if code == 0 else f"not running ({out[:80]})"
     code, out = _run(["systemctl", "--user", "stop", "tokunseba"])

@@ -75,6 +75,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   running them. They passed for whoever had run `uv sync --all-extras` and failed for
   everyone else, CI included. They pin it now, like the tests either side of them do.
 
+- On a machine with no user service manager, `tokunseba start` wrote a systemd unit that
+  could never run and then reported `Started via ... (start failed: [WinError 2] ...)`.
+  It now says there is nothing to keep the proxy alive here, points at
+  `tokunseba start --foreground`, and exits non-zero. `stop`, `uninstall` and the `init`
+  disclosure say the same thing rather than naming a file that does nothing.
+
 ### Removed
 
 - Everything that was denominated in a currency, and the rate table behind it. One rate

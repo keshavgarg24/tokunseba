@@ -85,3 +85,33 @@ def test_install_refuses_a_transient_executable_path(home, tmp_path, monkeypatch
                         lambda _n: "/Users/x/.cache/uv/builds-v0/.tmpAB/bin/tokunseba")
     exe = service.executable()
     assert "builds-v0" not in exe and "/.tmp" not in exe
+
+
+def test_a_machine_with_no_service_manager_is_told_so_rather_than_given_a_dead_unit(
+        monkeypatch):
+    """Windows has neither launchd nor a systemd user instance.
+
+    The old code fell through to the systemd branch, wrote a unit file into the Windows
+    home and reported "Started via ... (start failed: [WinError 2] ...)" -- a file that can
+    never do anything, and a message about a missing executable rather than about what the
+    person should do instead.
+    """
+    monkeypatch.setattr(service.platform, "system", lambda: "Windows")
+    assert service.supervisor() is None
+    path, state = service.install(7777)
+    assert path is None and "--foreground" in state
+    assert "nothing to stop" in service.stop()
+    assert "no background service" in service.uninstall()
+
+
+def test_start_without_a_service_manager_fails_loudly_instead_of_claiming_success(
+        home, monkeypatch):
+    """`start` reported success off a call that had just failed. Exit non-zero and say why."""
+    from click.testing import CliRunner
+
+    from tokunseba.cli import main
+    monkeypatch.setattr(service.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(service, "running", lambda _p: False)
+    r = CliRunner().invoke(main, ["start"])
+    assert r.exit_code == 1
+    assert "--foreground" in (r.output + str(r.stderr or ""))

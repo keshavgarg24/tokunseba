@@ -7,7 +7,7 @@
 [![PyPI](https://img.shields.io/pypi/v/tokunseba)](https://pypi.org/project/tokunseba/)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-766%20passing-brightgreen)](#development)
+[![Tests](https://img.shields.io/badge/tests-768%20passing-brightgreen)](#development)
 [![Local only](https://img.shields.io/badge/network-localhost%20only-lightgrey)](#privacy-and-safety)
 
 </div>
@@ -65,7 +65,7 @@ uv tool install "tokunseba[mcp]"
 | `mcp` | small | An MCP server so an assistant with no shell can still expand a handle. |
 | `laya` | 808 MB download, 2.2 GB RAM when loaded | A local judge model. Off by default and never loaded until you run `tokunseba judge enable`. See [The local judge](#the-local-judge). |
 
-The core needs neither. Requires Python 3.12, 3.13 or 3.14. Works on macOS, Linux and Windows.
+The core needs neither. Requires Python 3.12, 3.13 or 3.14, and runs on macOS, Linux and Windows. `tokunseba start` keeps the proxy alive in the background through launchd on macOS and a systemd user unit on Linux; Windows has neither, so there `tokunseba start --foreground` runs it in a window of its own and every other command behaves the same.
 
 ## The rule
 
