@@ -186,3 +186,18 @@ def test_replay_never_reaches_tier_three(home, dead_port, monkeypatch):
                         or real(c, rows, d))
     run(["replay", "--since", "30d"])
     assert seen["tier3"] is False
+
+
+def test_an_unchanged_config_explains_why_the_two_rows_still_differ(home, dead_port):
+    """The honest failure mode of replay, said out loud.
+
+    With no --tier and no --set the two rows look like they should match, and they usually
+    do not: a turn whose earlier identical copy fell outside the window cannot be deduped
+    against anything here, so it gets summarised instead and removes less. Reading that as
+    "my configuration got worse" is the obvious wrong conclusion, so the output names it.
+    """
+    _seed(home, [("r1", _turn(_big()))], est_tokens_before=1, est_tokens_after=1)
+    note = "this is the window rather than the configuration"
+    assert note in " ".join(run(["replay", "--since", "30d"]).output.split())
+    assert note not in " ".join(
+        run(["replay", "--since", "30d", "--tier", "1", "--tier", "2"]).output.split())

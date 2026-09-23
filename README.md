@@ -7,7 +7,7 @@
 [![PyPI](https://img.shields.io/pypi/v/tokunseba)](https://pypi.org/project/tokunseba/)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-768%20passing-brightgreen)](#development)
+[![Tests](https://img.shields.io/badge/tests-769%20passing-brightgreen)](#development)
 [![Local only](https://img.shields.io/badge/network-localhost%20only-lightgrey)](#privacy-and-safety)
 
 </div>
@@ -116,6 +116,8 @@ dedup_ref       1
 ```
 
 Add `--tier 2` to see what the summarisers would have caught, `--set thresholds.truncate_lines=120` to try one knob, and `--verbose` to get the request ids so you can read any one of them with `tokunseba explain`.
+
+With nothing overridden the two rows will usually still differ, and the output says why: a turn whose earlier identical copy falls outside `--since` or `--limit` has nothing to refer back to inside the window, so it gets summarised instead of deduplicated and removes less. Compare two runs of `--set` against each other rather than against a baseline of zero.
 
 Nothing of yours is written. The replay's ledger and blob store live in a temporary directory that is removed when it finishes, so it cannot leave a handle, an event, a frozen replacement or a learned token ratio behind. Tier 3 is deliberately not replayed: it decides which model answers, and no offline pass can know what a different model would have said. `tokunseba advise` is the command for that question.
 

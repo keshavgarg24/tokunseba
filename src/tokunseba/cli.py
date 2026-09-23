@@ -899,6 +899,15 @@ def replay(since: str, limit: int, tiers: tuple[str, ...], overrides: tuple[str,
         return
     console.print(f"[dim]{len(changed)} of {res.replayed} requests would come out "
                   f"different.[/dim]")
+    if not tiers and not overrides:
+        # Nothing was changed, so a reader is entitled to expect the two rows to match, and
+        # they usually will not. A turn whose duplicate lived outside this window has
+        # nothing to point at here and gets summarised instead, which removes less. Say so
+        # rather than let an unchanged configuration read as a worse one.
+        console.print("[dim]Nothing was overridden, so this is the window rather than the "
+                      "configuration: a turn whose earlier copy falls outside --since or "
+                      "--limit has nothing to refer back to here. Widen the window, or "
+                      "compare two runs of --set against each other.[/dim]")
     if not verbose:
         console.print("[dim]Re-run with --verbose to see which, or "
                       "tokunseba explain <request-id> for one of them.[/dim]")
