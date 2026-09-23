@@ -30,8 +30,12 @@ jobs:
         with:
           enable-cache: true
 
+      # --extra mcp, never --all-extras: the mcp server is small and pure Python and its
+      # tests skip themselves when it is absent, which means nobody was running them. The
+      # laya extra stays out -- it pulls torch and downloads 808 MB of weights, and the one
+      # test that exercises the real model is opt-in behind TOKUNSEBA_LAYA_SMOKE.
       - name: Install dependencies
-        run: uv sync --group dev
+        run: uv sync --group dev --extra mcp
         env:
           UV_PYTHON: ${{ matrix.python-version }}
 
