@@ -5,7 +5,7 @@
 **One local proxy in front of every AI coding tool you run. It reads each request on the way out, removes what the model has already been told without losing a byte of it, and sends the turn to whichever model actually needs to answer it, translating between provider protocols when they differ.**
 
 [![PyPI](https://img.shields.io/pypi/v/tokunseba)](https://pypi.org/project/tokunseba/)
-[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-766%20passing-brightgreen)](#development)
 [![Local only](https://img.shields.io/badge/network-localhost%20only-lightgrey)](#privacy-and-safety)
@@ -65,7 +65,7 @@ uv tool install "tokunseba[mcp]"
 | `mcp` | small | An MCP server so an assistant with no shell can still expand a handle. |
 | `laya` | 808 MB download, 2.2 GB RAM when loaded | A local judge model. Off by default and never loaded until you run `tokunseba judge enable`. See [The local judge](#the-local-judge). |
 
-The core needs neither. Requires Python 3.12 or 3.13. Works on macOS, Linux and Windows.
+The core needs neither. Requires Python 3.12, 3.13 or 3.14. Works on macOS, Linux and Windows.
 
 ## The rule
 

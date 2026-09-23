@@ -65,6 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `apps` blamed the operating system when `TOKUNSEBA_NO_SESSION_ENV` was what stopped
   it, telling macOS users macOS could not do this.
 
+### Fixed
+
+- Python 3.14 is supported. `requires-python` said `<3.14`, so on a machine whose `python3`
+  is 3.14 -- which is now common -- `pip install tokunseba` refused before it started.
+  Every dependency publishes 3.14 wheels and the suite passes on it, so the ceiling was
+  only ever conservative. CI runs 3.12, 3.13 and 3.14.
+- Two judge tests read whether the laya extra happened to be installed on the machine
+  running them. They passed for whoever had run `uv sync --all-extras` and failed for
+  everyone else, CI included. They pin it now, like the tests either side of them do.
+
 ### Removed
 
 - Everything that was denominated in a currency, and the rate table behind it. One rate

@@ -33,6 +33,19 @@ def _no_download(monkeypatch):
     monkeypatch.setattr(c, "_download", boom)
 
 
+@pytest.fixture
+def _extra_installed(monkeypatch):
+    """Pretend the laya extra is importable, without it being installed.
+
+    `judge enable` refuses before it writes anything when the extra is missing, so a test
+    of what enabling *does* has to pin this. Reading it off the machine instead means the
+    test passes only for whoever happens to have run `uv sync --all-extras`, and fails in
+    CI and for everyone who clones the repository -- which is exactly what it did.
+    """
+    import tokunseba.commands_judge as c
+    monkeypatch.setattr(c, "_installed", lambda: True)
+
+
 def test_the_judge_is_off_until_it_is_asked_for(home):
     assert config.load().judge.enabled is False
 
@@ -65,7 +78,7 @@ def test_enable_discloses_the_download_and_the_memory_before_asking(app, home, _
     assert config.load().judge.enabled is False, "declining must change nothing"
 
 
-def test_enable_then_disable_round_trips(app, home, _no_download, monkeypatch):
+def test_enable_then_disable_round_trips(app, home, _no_download, _extra_installed, monkeypatch):
     import tokunseba.commands_judge as c
     monkeypatch.setattr(c, "weights_cached", lambda *_a: True)
     run(app, ["judge", "enable", "-y"])
@@ -75,7 +88,7 @@ def test_enable_then_disable_round_trips(app, home, _no_download, monkeypatch):
     assert cfg.judge.enabled is False and cfg.judge.warm is False and cfg.judge.inline is False
 
 
-def test_enable_does_not_warm_unless_asked(app, home, _no_download, monkeypatch):
+def test_enable_does_not_warm_unless_asked(app, home, _no_download, _extra_installed, monkeypatch):
     """Warming holds 2.2 GB from startup, so it is a second, separate opt-in."""
     import tokunseba.commands_judge as c
     monkeypatch.setattr(c, "weights_cached", lambda *_a: True)

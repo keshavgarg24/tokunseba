@@ -27,12 +27,13 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Internet :: Proxy Servers",
   "Topic :: Software Development",
   "Topic :: Software Development :: Quality Assurance",
   "Topic :: Utilities",
 ]
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12,<3.15"
 dependencies = [
   "starlette>=0.40",
   "uvicorn>=0.30",
