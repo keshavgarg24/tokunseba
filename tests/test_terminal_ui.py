@@ -105,7 +105,7 @@ def test_sparkline_handles_missing_and_negative_values():
 
 # --------------------------------------------------------------------------- tables
 def test_stat_tiles_show_the_headline_numbers():
-    """Tokens, ratios and cache behaviour: the numbers that are true on any billing plan."""
+    """Tokens, ratios and cache behaviour: the numbers that are true on any kind of access."""
     out = render(T.stat_tiles(STATS))
     assert "tokens saved" in out and "31.0k" in out
     assert "60% of tool output" in out

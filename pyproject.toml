@@ -1,7 +1,7 @@
 [project]
 name = "tokunseba"
 version = "0.1.0"
-description = "One local proxy in front of every AI coding tool, making each request smaller without making it mean less"
+description = "A local proxy for every AI coding tool on your machine: it shrinks each request without losing a byte, and routes each turn to the model that turn actually needs"
 readme = "README.md"
 authors = [{ name = "tokunseba contributors" }]
 license = "MIT"

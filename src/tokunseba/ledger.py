@@ -291,7 +291,7 @@ class Ledger:
         return {
             "requests": requests, "input_tokens": total_in, "output_tokens": row[2],
             "tokens_saved": row[3], "total_tokens": row[4],
-            # Wall clock the provider spent on this window. It is the one figure that says
+            # Wall clock the provider took on this window. It is the one figure that says
             # whether a change made the day faster as well as smaller.
             "latency_ms": row[5],
             "cache_read": row[6],

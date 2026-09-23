@@ -242,7 +242,7 @@ def test_handle_holds_the_original_bytes_not_the_canonical_ones(pipe, home):
 
 def test_reference_survives_history_compaction(pipe):
     """A harness that compacts history renumbers messages. The same bytes must still
-    produce the same replacement, or the whole cached prefix is paid for again."""
+    produce the same replacement, or the whole cached prefix has to be read again."""
     p, _cfg, _led = pipe
     big = "\n".join(f"line {i}" for i in range(400))
     before = build([("Read", "/a.py", big), ("Read", "/b.py", "filler " * 500),

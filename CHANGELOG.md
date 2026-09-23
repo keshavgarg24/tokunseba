@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Cross-protocol routing. A rule may now send a turn to an upstream that speaks a
+  different protocol from the client: `protocols/translate.py` rewrites the request on
+  the way out and the reply on the way back, for Anthropic to OpenAI and Anthropic to
+  Ollama. System prompts, tool definitions, tool calls and their results, images, stop
+  reasons, usage and error envelopes are mapped, and a streamed reply is re-framed event
+  by event rather than buffered, so it still arrives a token at a time. Without this the
+  routing tier could not do the thing it exists for, because a coding agent speaks one
+  protocol to every model it talks to and `COMPATIBLE["anthropic"]` was `{"anthropic"}`.
+  Two invariants hold it together: dropping a field is allowed and inventing one is not,
+  and upstream tool-call identifiers travel through untouched in both directions because
+  the client hands them straight back on the next turn. Usage is still read with the
+  upstream's own adapter on the upstream's own bytes, so the ledger stays exact. Every
+  translated turn records a `protocol_translated` signal. A pair with no translator is
+  still refused and recorded rather than attempted.
 - `tokunseba apps` for applications launched from the Dock, Spotlight or a desktop
   menu. Such an application is started by the operating system rather than by a shell,
   so it never reads the shell profile `init` writes to and silently goes straight to
@@ -42,11 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- Every currency figure, and the price table behind them. A per-token price is correct
-  for exactly one kind of access and silently wrong for all the others, so `--money`,
-  `pricing.py`, the `pricing` config section and the `cost_usd` and `counterfactual_usd`
-  ledger columns are gone. Savings are reported in tokens, ratios and time, which mean
-  the same thing to everybody. A test now fails if a currency figure comes back.
+- Everything that was denominated in a currency, and the rate table behind it. One rate
+  is right for exactly one kind of access and quietly wrong for every other, so the
+  `--money` flag, `pricing.py`, the `pricing` config section and the `cost_usd` and
+  `counterfactual_usd` ledger columns are all gone. Results are reported in tokens, ratios
+  and time, which mean the same thing to everybody. A test fails if any of it returns.
 - The generated design and plan documents under `docs/`. They described the code as it
   was going to be written, not as it is, and shipped in the source distribution.
 

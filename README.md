@@ -2,11 +2,11 @@
 
 <img src="assets/logo-wordmark.svg" alt="tokunseba" width="232" height="64">
 
-**One local proxy in front of every AI coding tool you run. It makes each request smaller on the way out, keeps every byte it removes retrievable, and measures the result against a control arm instead of promising you a number.**
+**One local proxy in front of every AI coding tool you run. It reads each request on the way out, removes what the model has already been told without losing a byte of it, and sends the turn to whichever model actually needs to answer it, translating between provider protocols when they differ.**
 
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-687%20passing-brightgreen)](#development)
+[![Tests](https://img.shields.io/badge/tests-751%20passing-brightgreen)](#development)
 [![Local only](https://img.shields.io/badge/network-localhost%20only-lightgrey)](#privacy-and-safety)
 
 </div>
@@ -16,6 +16,10 @@
 Coding agents are heavy for a reason that has nothing to do with the model. An agent reads a file, pastes it into the conversation, reads it again four turns later, and carries the entire transcript forward on every single call. The waste is in the request, and it is the same waste in every tool you have installed.
 
 tokunseba is one process on `127.0.0.1` that sits in front of all of them, speaking the Anthropic, OpenAI, Gemini and Ollama protocols, and edits requests on their way out. Repeated tool output collapses to a handle you can expand later. Cache breakpoints get added where a client forgot them. Nothing already sent is ever rewritten, because a prompt cache matches on an exact byte prefix and breaking one wastes far more than any compression recovers.
+
+The other half of the weight is which model answers. A coding agent speaks one protocol to everything it talks to, so the strongest model you have configured handles `looks good, commit it` with exactly the same machinery as the turns that are actually hard. tokunseba reads the opening prompt of a conversation, decides what that turn needs, and can send it to a different provider entirely, rewriting the request into that provider's protocol and rewriting the reply back on the way home. The client never learns that it happened.
+
+Whatever it does, it measures. Sessions are split between a control arm and a treatment arm drawn from your own traffic, so a report is a comparison you can check rather than a number this page asked you to believe.
 
 Three things it will not do:
 
@@ -119,11 +123,33 @@ Four things bound this:
 - A rule only ever fires on the first turn of a conversation, never mid-thread.
 - A signal below the confidence gate is discarded, so an unsure read changes nothing.
 - A rule with no conditions never matches, so a typo cannot route everything.
-- tokunseba rewrites request bodies, it does not translate between provider formats. A request arriving as Anthropic cannot be sent to an endpoint speaking OpenAI, and such a rule is refused and recorded rather than attempted. Same-protocol model swaps, including Claude Opus to Claude Haiku, work everywhere.
+- A pair with no translator is refused and recorded rather than attempted, so a rule can never send a turn somewhere that would only reject it.
 
 `tokunseba models` shows which of your endpoints each client protocol can reach.
 
 This needs no model, no key and no download. The default judge answers from calibrated rules in microseconds.
+
+### Across protocols
+
+Claude Code speaks Anthropic to everything it talks to. Codex speaks OpenAI. That is the reason "send the easy turns to the local model" is usually a slide rather than a feature: the client cannot address the other endpoint, and the other endpoint cannot read the client.
+
+tokunseba rewrites the turn instead. An Anthropic request routed to an OpenAI-shaped endpoint, which includes anything served by Ollama, LM Studio, vLLM, DeepSeek or OpenRouter, goes out converted and comes back converted. System prompts, tool definitions, tool calls and their results, images, stop reasons, usage and error envelopes are all mapped, and a streamed reply is rebuilt event by event rather than buffered, so it still arrives a token at a time.
+
+Two rules keep that honest:
+
+- **Dropping a field is allowed, inventing one is not.** Nothing reaches the model that you did not send. A field the far end has no equivalent for, such as an extended-thinking block, is left behind rather than faked.
+- **Tool-call identifiers travel through untouched, both ways.** The client hands them straight back on the next turn and the far end has to recognise them, so prettifying one would break the conversation two turns later.
+
+```
+$ tokunseba route test "hey there"
+
+Matches: difficulty<=1 -> ollama / qwen2.5-coder
+This turn would go to ollama asking for qwen2.5-coder.
+It arrives as anthropic, so the request is translated to ollama on the way out and the
+reply is translated back. The client sees no difference.
+```
+
+Every turn this happens to records a `protocol_translated` signal, so `tokunseba stats` tells you afterwards exactly which turns left in a different shape. The ledger reads usage from what the upstream actually reported, not from the rewritten reply, so the numbers stay the provider's own.
 
 ## The local judge
 
@@ -266,7 +292,7 @@ tokunseba advise               what your prompts looked like, and what routing w
 
 `tokunseba report` is one page covering the whole window: tokens saved per day and per hour, where the compressible mass is by tool-result size, transforms by kind, savings by tool and by model, the biggest untouched blocks, every signal with an explanation, what you asked about by domain and by difficulty, and context growth in the newest session.
 
-Everything is counted in tokens, ratios and time. Those mean the same thing whatever kind of access you have, so nothing in tokunseba is denominated in anything else and no report asks you to configure a price list.
+Everything is counted in tokens, ratios and time. Those mean the same thing whatever kind of access you have and whoever you have it from, so tokunseba reports nothing else and asks you to configure no rate table to read its own output.
 
 History is kept for 90 days unless you say otherwise:
 

@@ -25,7 +25,7 @@ __all__ = ["run_command"]
 
 _NOT_FOUND_CODE = 127
 
-#: Share of the line budget spent on the head of a capped output. The tail gets
+#: Share of the line budget given to the head of a capped output. The tail gets
 #: the rest, because the end of a long run (the failure, the summary) usually
 #: matters more per line than its middle.
 _HEAD_SHARE = 0.60
