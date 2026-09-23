@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from . import claude_code, codex, envfile
+from . import claude_code, codex, envfile, guiapps
 
 SHELL_NOTE = "picks up the shell env block from ~/.tokunseba/env.sh"
 MCP_NAME = "tokunseba"
@@ -49,6 +49,15 @@ def _continue_config() -> Path | None:
     return None
 
 
+def cfg_port() -> int:
+    """The configured port, without importing config at module import time."""
+    from ..config import load
+    try:
+        return load().port
+    except Exception:  # noqa: BLE001 - a broken config must not break detection
+        return 7777
+
+
 def detect_all() -> list[ToolStatus]:
     out: list[ToolStatus] = []
 
@@ -60,6 +69,12 @@ def detect_all() -> list[ToolStatus]:
 
     installed, configured, note = envfile.status()
     out.append(ToolStatus("shell-env", installed, configured, str(envfile.profile_path()), note))
+
+    # Separate from shell-env on purpose: a terminal and a Dock-launched application get
+    # their environment from two different places, and being correct in one says nothing
+    # about the other.
+    installed, configured, note = guiapps.status(cfg_port())
+    out.append(ToolStatus("gui-apps", installed, configured, note, note))
 
     aider = shutil.which("aider")
     out.append(ToolStatus("aider", aider is not None, False, aider or "", SHELL_NOTE))
@@ -119,6 +134,10 @@ def restore_all() -> list[str]:
         f"removed shell env block from {envfile.profile_path()}" if envfile.restore()
         else "shell-env: nothing to remove"
     )
+    # Leaving these set while the proxy is down would point every application on the
+    # machine at a closed port, which fails loudly instead of quietly.
+    for line in guiapps.restore(cfg_port()):
+        out.append(f"gui-apps: {line}")
     if shutil.which("claude"):
         ok, _ = _run(["claude", "mcp", "remove", "--scope", "user", MCP_NAME])
         out.append(

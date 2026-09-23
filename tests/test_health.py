@@ -87,3 +87,21 @@ def test_no_conflict_when_unset(monkeypatch):
     for v in ("ANTHROPIC_BASE_URL", "OPENAI_BASE_URL", "OPENAI_API_BASE", "OLLAMA_HOST"):
         monkeypatch.delenv(v, raising=False)
     assert conflicting_env(7777) == {}
+
+
+def test_silent_but_configured_points_at_the_gui_app_step():
+    """The commonest reason for a correct install that sees nothing.
+
+    A tool opened from the Dock never runs the shell profile, so the one sentence shown
+    when the ledger is empty has to name that, or the user has no way to find it.
+    """
+    never = _r(requests_ever=0).problem
+    quiet = _r(requests_ever=200, requests_last_hour=0).problem
+    for text in (never, quiet):
+        assert "tokunseba apps on" in text
+
+
+def test_an_overriding_variable_mentions_both_ways_a_tool_gets_started():
+    problem = _r(overriding_env={"ANTHROPIC_BASE_URL": "https://api.anthropic.com"}).problem
+    assert "new shell" in problem
+    assert "tokunseba apps on" in problem

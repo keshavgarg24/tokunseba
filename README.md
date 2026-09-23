@@ -27,6 +27,16 @@ tokunseba doctor
 
 `init` detects the AI tools installed on this machine, points them at the proxy, backs up every file it touches, and starts the proxy in the background. It prints each change before making it. `tokunseba off` reverses all of it in one command.
 
+Open a new terminal afterwards, because the shell block only runs when a shell starts.
+
+If you open your AI tool from the Dock, Spotlight or a desktop menu rather than by typing its name, it is not started by a shell and never reads your shell profile, so it will keep going straight to the provider and every report will read zero. One more command fixes that:
+
+```bash
+tokunseba apps on
+```
+
+It prints exactly what it will change, asks, and changes nothing if you say no. `tokunseba apps off` removes it. See [Applications you open from the Dock](#applications-you-open-from-the-dock).
+
 With pip instead of uv:
 
 ```bash
@@ -140,6 +150,37 @@ Two measurements from running the real model on an M-series laptop, both of whic
 
 Both are pinned by tests, so a future checkpoint that fixes them will say so.
 
+## Applications you open from the Dock
+
+A terminal reads your shell profile every time it opens, which is why `tokunseba init` is enough for anything you start by typing its name. An application launched from the Dock, Spotlight or a desktop menu is started by the operating system, not by a shell. It never reads that file, so it never learns the proxy exists.
+
+Nothing fails when this happens, which is what makes it hard to spot. The tool works normally, goes straight to the provider, and tokunseba records nothing. Every number in every report reads zero, which looks exactly like there having been nothing to save.
+
+`tokunseba apps` shows what such an application would actually connect to. `tokunseba apps on` fixes it by setting the four base URLs in your login session, and it prints the exact commands first:
+
+```
+This will change your login session, not just this project.
+
+  launchctl setenv ANTHROPIC_BASE_URL http://127.0.0.1:7777/anthropic
+  launchctl setenv OPENAI_BASE_URL http://127.0.0.1:7777/openai/v1
+  launchctl setenv OPENAI_API_BASE http://127.0.0.1:7777/openai/v1
+  launchctl setenv OLLAMA_HOST http://127.0.0.1:7777/ollama
+  write ~/Library/LaunchAgents/dev.tokunseba.appenv.plist so the four survive a restart
+
+Every application you open afterwards inherits these four variables, not only AI tools.
+A program that reads none of them is unaffected. tokunseba apps off removes them.
+
+Apply this? [y/N]:
+```
+
+| Platform | What it sets | When it takes effect |
+|---|---|---|
+| macOS | `launchctl setenv`, plus a launch agent so it survives a restart | applications opened after the command |
+| Linux | `~/.config/environment.d/tokunseba.conf` | next login |
+| Windows | not automated; prints the four `setx` lines to run | next login |
+
+`tokunseba apps off` removes them, and only clears a variable that points at a tokunseba proxy, so a value you set yourself for another reason survives. `tokunseba off` and `tokunseba uninstall` do this for you. Set `TOKUNSEBA_NO_SESSION_ENV=1` if you want tokunseba never to read or write your login session at all.
+
 ## Supported tools
 
 | Tool | How |
@@ -162,6 +203,8 @@ tokunseba init                 configure every tool and start in the background
 tokunseba doctor               check the install and anything silently costing tokens
 tokunseba verify               prove the proxy is in the path, with evidence
 tokunseba on | off             re-apply or restore every tool config
+tokunseba apps                 what an app launched from the Dock would connect to
+tokunseba apps on | off        route those too, after saying what it changes
 tokunseba start | stop | restart
 tokunseba uninstall            remove the service and restore everything
 ```

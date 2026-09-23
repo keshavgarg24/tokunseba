@@ -16,6 +16,12 @@ BASE_VARS = (
 )
 
 
+#: Appended wherever "configured but silent" is the symptom, because a GUI-launched
+#: application is by far the most common reason for it and the least visible.
+GUI_HINT = ("An application you open from the Dock or Spotlight never reads your shell "
+            "profile, so it needs one more step: tokunseba apps on")
+
+
 @dataclass
 class Routing:
     proxy_running: bool
@@ -39,8 +45,10 @@ class Routing:
             return (f"{names} is already exported in your environment, pointing somewhere "
                     f"other than tokunseba ({self.overriding_env[first]}). An exported "
                     f"variable beats the settings file, so your tool bypasses the proxy no "
-                    f"matter what `tokunseba init` writes. Unset it, or start your tool from "
-                    f"a shell where tokunseba's own env block runs last.")
+                    f"matter what `tokunseba init` writes. Unset it and start your tool from a "
+                    f"new shell. If you open that tool from the Dock rather than by "
+                    f"typing its name, it never reads your shell profile at all: "
+                    f"tokunseba apps on")
         if not self.proxy_running:
             return ("The proxy is not running, so nothing is being routed through it. "
                     "Start it with: tokunseba start")
@@ -57,11 +65,11 @@ class Routing:
                     f"provider. Fix it with: tokunseba init")
         if self.requests_ever == 0:
             return ("Configured, but nothing has come through yet. Open a NEW terminal so the "
-                    "settings take effect, then use your tool as normal.")
+                    "settings take effect, then use your tool as normal. " + GUI_HINT)
         if self.requests_last_hour == 0:
             return ("Configured, but nothing has come through in the last hour. If you have "
                     "been working, check that the tool was started from a shell opened after "
-                    "`tokunseba init`.")
+                    "`tokunseba init`. " + GUI_HINT)
         return None
 
 
@@ -74,7 +82,7 @@ def check(cfg, ledger) -> Routing:
         for t in registry.detect_all():
             if t.configured:
                 routed.append(t.name)
-            elif t.installed and t.name not in ("shell-env",):
+            elif t.installed and t.name not in ("shell-env", "gui-apps"):
                 unrouted.append(t.name)
     except Exception:  # noqa: BLE001 - never let a health check break a report
         pass

@@ -163,9 +163,23 @@ def start(foreground: bool, warm_judge: bool) -> None:
 
 
 @main.command()
-def stop() -> None:
-    """Stop the background proxy."""
+@click.option("-y", "--yes", is_flag=True, help="Do not ask, even if tools are routed.")
+def stop(yes: bool) -> None:
+    """Stop the background proxy. Tools still pointed at it will fail until it is back."""
     from . import service
+    from .detect import registry
+    # Stopping a proxy that tools are configured to use does not quietly fall back to the
+    # provider: the base URL still points at a closed port, so the next request fails hard.
+    # Better to say so here than to have somebody debug a dead tool.
+    routed = [t.name for t in registry.detect_all() if t.configured]
+    if routed and not yes:
+        console.print(f"[yellow]{escape(', '.join(routed))} still point at "
+                      f"127.0.0.1:{config.load().port}.[/yellow] [dim]Stopping the proxy "
+                      f"makes them fail to connect until you start it again. To send them "
+                      f"back to the provider instead, use: tokunseba off[/dim]")
+        if not click.confirm("Stop anyway?", default=False):
+            console.print("[dim]Still running.[/dim]")
+            return
     console.print(service.stop())
 
 
@@ -936,6 +950,7 @@ def config_set(key: str, value: str) -> None:
     console.print(f"{key} = {new}")
 
 
+from .commands_apps import register as _register_apps  # noqa: E402
 from .commands_judge import register as _register_judge  # noqa: E402
 from .commands_retention import register as _register_retention  # noqa: E402
 from .commands_models import register as _register_models  # noqa: E402
@@ -944,6 +959,7 @@ from .commands_tier import register as _register_tier  # noqa: E402
 from .commands_wrap import register as _register_wrap  # noqa: E402
 
 _register_wrap(main)
+_register_apps(main)
 _register_judge(main)
 _register_retention(main)
 _register_models(main)

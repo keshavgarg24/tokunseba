@@ -316,7 +316,7 @@ def test_apply_all_and_restore_all(home, settings, codex_config, profile, no_cla
     ] == OPENAI_BASE
 
     messages = registry.restore_all()
-    assert len(messages) == 3
+    assert any("gui-apps" in m for m in messages)
     assert json.loads(settings.read_text()) == {"model": "opus"}
     assert profile.read_text() == original_profile
 

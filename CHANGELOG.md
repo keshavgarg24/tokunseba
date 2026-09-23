@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `tokunseba apps` for applications launched from the Dock, Spotlight or a desktop
+  menu. Such an application is started by the operating system rather than by a shell,
+  so it never reads the shell profile `init` writes to and silently goes straight to
+  the provider. `apps on` sets the four base URLs in the login session after printing
+  the exact commands it will run; `apps off` removes them, clearing only variables that
+  point at a tokunseba proxy. macOS uses `launchctl` plus a launch agent so the setting
+  survives a restart, Linux uses `~/.config/environment.d`, and Windows prints the
+  `setx` lines to run by hand.
+- `TOKUNSEBA_NO_SESSION_ENV` makes tokunseba never read or write the login session.
+
+### Changed
+
+- The "configured but nothing has come through" message now names the Dock case, which
+  is the commonest reason for a correct install that records nothing.
+- `tokunseba stop` says that routed tools will fail to connect while the proxy is down
+  rather than falling back to the provider, and asks before stopping. `-y` skips it.
+- `tokunseba off` and `tokunseba uninstall` also clear the login-session variables.
+
+
 ## [0.1.0] - 2026-09-22
 
 First public release.

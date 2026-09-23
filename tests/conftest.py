@@ -26,6 +26,17 @@ def _no_model_loading(monkeypatch):
     monkeypatch.setenv("TOKUNSEBA_NO_WARM", "1")
 
 
+@pytest.fixture(autouse=True)
+def _no_session_env(monkeypatch):
+    """Never touch the developer's own login session.
+
+    `tokunseba apps on` writes variables that every GUI application on the machine
+    inherits. A test suite that did that for real, or worse un-did it, would break the
+    machine it is running on. The production code checks this variable.
+    """
+    monkeypatch.setenv("TOKUNSEBA_NO_SESSION_ENV", "1")
+
+
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     monkeypatch.setenv("TOKUNSEBA_HOME", str(tmp_path))
