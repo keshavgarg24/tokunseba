@@ -1,9 +1,10 @@
 <div align="center">
 
-<img src="assets/logo-wordmark.svg" alt="tokunseba" width="232" height="64">
+<img src="https://raw.githubusercontent.com/keshavgarg24/tokunseba/main/assets/logo-wordmark.svg" alt="tokunseba" width="232" height="64">
 
 **One local proxy in front of every AI coding tool you run. It reads each request on the way out, removes what the model has already been told without losing a byte of it, and sends the turn to whichever model actually needs to answer it, translating between provider protocols when they differ.**
 
+[![PyPI](https://img.shields.io/pypi/v/tokunseba)](https://pypi.org/project/tokunseba/)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-751%20passing-brightgreen)](#development)
@@ -30,7 +31,7 @@ Three things it will not do:
 ## Install
 
 ```bash
-uv tool install "git+https://github.com/keshavgarg24/tokunseba"
+uv tool install tokunseba
 tokunseba init
 tokunseba doctor
 ```
@@ -50,13 +51,13 @@ It prints exactly what it will change, asks, and changes nothing if you say no. 
 With pip instead of uv:
 
 ```bash
-pip install "git+https://github.com/keshavgarg24/tokunseba"
+pip install tokunseba
 ```
 
 Optional extras:
 
 ```bash
-uv tool install "git+https://github.com/keshavgarg24/tokunseba#egg=tokunseba[mcp]"
+uv tool install "tokunseba[mcp]"
 ```
 
 | Extra | Size | What it adds |
