@@ -37,7 +37,7 @@ EVENT_HELP: dict[str, str] = {
     "budget_exceeded": "today's tokens passed the configured daily budget",
     "judge_error": "the local judge failed or timed out; the conservative path was taken",
     "effort_set": "an easy turn was sent at low effort",
-    "model_routed": "an easy first turn was sent to a cheaper model",
+    "model_routed": "an easy first turn was sent to a smaller model",
     "local_routed": "an easy first turn was sent to a local model",
     "rule_routed": "a first turn matched a routing rule and went to the model it named",
     "route_refused": "a routing rule matched but its target could not be used, so the "

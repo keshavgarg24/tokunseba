@@ -72,6 +72,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--money` flag, `pricing.py`, the `pricing` config section and the `cost_usd` and
   `counterfactual_usd` ledger columns are all gone. Results are reported in tokens, ratios
   and time, which mean the same thing to everybody. A test fails if any of it returns.
+- The vocabulary as well as the figures. A smaller model is described as smaller, a faster
+  path as faster and a lighter encoding as lighter, because that is the actual property and
+  it is true whatever your access looks like. The guard covers the package and the docs.
 - The generated design and plan documents under `docs/`. They described the code as it
   was going to be written, not as it is, and shipped in the source distribution.
 

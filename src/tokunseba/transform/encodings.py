@@ -1,4 +1,4 @@
-"""Pick the cheapest faithful encoding for a payload."""
+"""Pick the smallest faithful encoding for a payload."""
 
 from __future__ import annotations
 

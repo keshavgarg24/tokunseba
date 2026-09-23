@@ -1,7 +1,7 @@
 """The `tokunseba route` command group.
 
 Prompt-driven routing: read the opening prompt, and if it is clearly the kind of turn a
-cheaper or local model handles well, send it there. Everything here is off until asked for,
+smaller or local model handles well, send it there. Everything here is off until asked for,
 every rule is visible, and `route test` shows exactly what would happen to a given prompt
 before anything is switched on.
 """

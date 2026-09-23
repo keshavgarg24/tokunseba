@@ -60,8 +60,8 @@ TIERS: list[Tier] = [
         "Reach-preserving means the full text stays one call away rather than gone. The "
         "risk it carries is real but bounded: if the answer depended on line 4000 of a "
         "log, the assistant has to ask for it instead of already having it. Turn this "
-        "off if you work with output where every line matters and you would rather pay "
-        "for all of it. Tier 1 keeps working without it.",
+        "off if you work with output where every line matters and you would rather send "
+        "every one of them. Tier 1 keeps working without it.",
     ),
     Tier(
         3, "opt-in", "tier3",

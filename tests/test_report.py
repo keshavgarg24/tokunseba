@@ -428,6 +428,14 @@ def test_status_shows_fresh_tokens_and_one_next_action(home, dead_port):
     assert "next:" in out and "tokunseba start" in out   # the proxy is not running
 
 
+#: Both the figures and the vocabulary. A figure is wrong for everybody it was not measured
+#: for; the vocabulary is the slope back to one, and it also frames a smaller model as the
+#: budget option rather than the right tool. "smaller", "lighter" and "quicker" say the
+#: actual thing and are true on any kind of access.
+_CURRENCY = r"usd|dollar|\$\{?\d|per.token price|price_for|cost_usd|\bmoney\b|billing|billed"
+_VOCAB = r"cheap(er|est)?\b|expensive|\bpays?\b|\bpaid\b|\bspends?\b|\bspent\b|invoice"
+
+
 def test_no_source_file_reintroduces_a_currency_figure():
     """A guard, not a style rule.
 
@@ -440,11 +448,32 @@ def test_no_source_file_reintroduces_a_currency_figure():
 
     import tokunseba
     root = Path(tokunseba.__file__).parent
-    banned = re.compile(r"usd|dollar|\$\{?\d|per.token price|price_for|cost_usd", re.I)
+    banned = re.compile(f"{_CURRENCY}|{_VOCAB}", re.I)
     # `is_sensitive` and the rules backend deliberately match the *user's* prompt against
     # financial words so those turns are never routed to a smaller model. That is a safety
     # gate on somebody else's text, not a figure tokunseba prints, so it is exempt.
     exempt = {"questions.py", "rules.py"}
     offenders = [f"{p.name}:{i}" for p in root.rglob("*.py") if p.name not in exempt
                  for i, line in enumerate(p.read_text().splitlines(), 1) if banned.search(line)]
+    assert not offenders, f"currency reintroduced at {offenders}"
+
+
+def test_the_docs_do_not_reintroduce_it_either():
+    """The pages that explain what tokunseba does are held to the same rule as the code.
+
+    CHANGELOG.md is deliberately not scanned. It has to name the removed flag, module and
+    columns or nobody upgrading can tell what went; a record of an absence is the opposite
+    of the thing this guards against.
+    """
+    import re
+    from pathlib import Path
+
+    import tokunseba
+    root = Path(tokunseba.__file__).parents[2]
+    banned = re.compile(f"{_CURRENCY}|{_VOCAB}", re.I)
+    docs = [root / n for n in ("README.md", "CONTRIBUTING.md")]
+    if not all(d.exists() for d in docs):
+        pytest.skip("running against an installed package, not the source tree")
+    offenders = [f"{d.name}:{i}" for d in docs
+                 for i, line in enumerate(d.read_text().splitlines(), 1) if banned.search(line)]
     assert not offenders, f"currency reintroduced at {offenders}"

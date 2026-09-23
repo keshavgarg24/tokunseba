@@ -70,7 +70,7 @@ def test_ambiguous_prompts_stay_under_the_gate(text):
 
 
 def test_no_ordinary_work_is_ever_confidently_easy():
-    """The expensive mistake is calling a real task easy, because that is what can send it
+    """The mistake that matters is calling a real task easy, because that is what can send it
     to a weaker model. Nothing in this corpus may do both at once."""
     corpus = [
         "fix the failing test in tests/test_ledger.py",

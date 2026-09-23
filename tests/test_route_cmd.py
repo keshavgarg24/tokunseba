@@ -77,7 +77,7 @@ def test_a_model_swap_keeps_the_upstream(home):
 
 
 def test_routing_never_fires_after_the_first_turn(home):
-    cfg = cfg_with(home, [{"max_difficulty": 1.0, "model": "cheap"}])
+    cfg = cfg_with(home, [{"max_difficulty": 1.0, "model": "small"}])
     body = {"model": "claude-opus-5"}
     up, reason = routing.apply(Norm(turns=4), body, {"difficulty": 0.0}, cfg)
     assert up is None and reason == "not-session-start"
@@ -85,7 +85,7 @@ def test_routing_never_fires_after_the_first_turn(home):
 
 
 def test_routing_does_nothing_while_tier3_is_off(home):
-    cfg = cfg_with(home, [{"max_difficulty": 3.0, "model": "cheap"}], tier3=False)
+    cfg = cfg_with(home, [{"max_difficulty": 3.0, "model": "small"}], tier3=False)
     body = {"model": "claude-opus-5"}
     assert routing.apply(Norm(), body, {"difficulty": 0.0}, cfg) == (None, "")
     assert body["model"] == "claude-opus-5"
@@ -147,7 +147,7 @@ def test_status_without_rules_explains_how_to_add_one(home):
 
 
 def test_add_requires_a_condition(home):
-    r = run(["route", "add", "--model", "cheap"])
+    r = run(["route", "add", "--model", "small"])
     assert r.exit_code == 2
     assert "at least one condition" in flat(r)
     assert config.load().tier3_opts.rules == []
@@ -181,7 +181,7 @@ def test_rm_rejects_an_index_that_does_not_exist(home):
 
 
 def test_add_warns_that_tier3_is_off(home):
-    out = flat(run(["route", "add", "--domain", "code", "--model", "cheap"]))
+    out = flat(run(["route", "add", "--domain", "code", "--model", "small"]))
     assert "Tier 3 is off" in out
 
 
@@ -193,7 +193,7 @@ def test_add_says_which_clients_the_target_can_serve(home):
 
 
 def test_enable_asks_first_and_disable_keeps_the_rules(home):
-    run(["route", "add", "--domain", "code", "--model", "cheap"])
+    run(["route", "add", "--domain", "code", "--model", "small"])
     assert run(["route", "enable"], input="n\n").exit_code == 0
     assert config.load().tier3 is False
     assert run(["route", "enable", "-y"]).exit_code == 0
@@ -204,7 +204,7 @@ def test_enable_asks_first_and_disable_keeps_the_rules(home):
 
 
 def test_clear_confirms(home):
-    run(["route", "add", "--domain", "code", "--model", "cheap"])
+    run(["route", "add", "--domain", "code", "--model", "small"])
     run(["route", "clear"], input="n\n")
     assert len(config.load().tier3_opts.rules) == 1
     run(["route", "clear", "-y"])

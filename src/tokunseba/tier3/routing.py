@@ -1,4 +1,4 @@
-"""Opt-in: send a turn to a cheaper or local model, but only at the start of a conversation.
+"""Opt-in: send a turn to a smaller or local model, but only at the start of a conversation.
 
 Switching model mid-conversation forfeits the prompt cache and, on newer Anthropic models,
 the thinking blocks bound to the producing model. So routing only ever happens on turn one.

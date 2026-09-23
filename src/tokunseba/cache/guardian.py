@@ -1,5 +1,6 @@
-"""Detect prompt-cache prefix drift. A cache miss costs ten times a cache hit, so drift is the
-most expensive thing that can happen silently."""
+"""Detect prompt-cache prefix drift. A miss makes the provider read the whole prefix again
+where a hit reads almost none of it, so drift is the most wasteful thing that can happen
+silently."""
 from __future__ import annotations
 
 import re

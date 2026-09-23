@@ -3,7 +3,7 @@
 Two stages:
 
 1. :func:`detect_type` classifies a blob of tool output into one of :data:`LABELS`.
-   Classification is cheap regex/heuristic work; an optional :data:`tie_breaker`
+   Classification is quick regex/heuristic work; an optional :data:`tie_breaker`
    hook can be consulted when the regex verdict is weak.
 2. :func:`summarize` applies a per-label reduction that keeps the lines a human
    (or a model) actually needs -- failures, errors, summary counts -- and drops
@@ -125,7 +125,7 @@ def _command_override(command: str) -> str | None:
 def detect_type_regex_only(
     text: str, tool_name: str | None, command: str | None
 ) -> tuple[str, float]:
-    """Classify ``text`` using only regexes and cheap heuristics.
+    """Classify ``text`` using only regexes and quick heuristics.
 
     The command line wins outright when it is recognizable. Otherwise each label
     scores one point per matching signal, and the confidence of the winner is

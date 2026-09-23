@@ -646,7 +646,7 @@ def _mix_note(mix: dict) -> str:
     if mix.get("sensitive"):
         parts.append(f"{mix['sensitive']} looked sensitive")
     tail = ("" if not easy else
-            f" {easy} opened trivially or easily; a rule could send those to a cheaper "
+            f" {easy} opened trivially or easily; a rule could send those to a smaller "
             f"model: tokunseba route add --max-difficulty 1 --model MODEL")
     return " · ".join(parts) + ("." + tail if tail else ".")
 

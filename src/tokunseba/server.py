@@ -155,9 +155,9 @@ class Proxy:
 
     # Regexes answer in microseconds. A quarter of a second is far more than they need and
     # far less than anyone would notice, so it bounds the damage if a backend misbehaves.
-    CHEAP_JUDGE_TIMEOUT = 0.25
+    FAST_JUDGE_TIMEOUT = 0.25
 
-    def _judge_is_cheap(self) -> bool:
+    def _judge_is_fast(self) -> bool:
         """Whether asking the judge is fast enough to do inside a request.
 
         The rules backend is regexes, so it always is. The local model is not, which is
@@ -171,9 +171,9 @@ class Proxy:
         The budget is enforced here rather than left to the backend, because a backend that
         ignored its own timeout would hold the request open. Running out of time means no
         signals, which means no routing, which means the turn goes where it was already
-        going: the request is never the thing that pays.
+        going: the request is never the thing that waits.
         """
-        budget = self.cfg.judge.timeout if self.cfg.judge.inline else self.CHEAP_JUDGE_TIMEOUT
+        budget = self.cfg.judge.timeout if self.cfg.judge.inline else self.FAST_JUDGE_TIMEOUT
         try:
             return await asyncio.wait_for(self._signals(norm, ctx, timeout=budget), budget)
         except Exception as exc:  # noqa: BLE001 - a judge may never break or stall a request
@@ -343,11 +343,11 @@ class Proxy:
                                          ctx.session_id, ctx.request_id)
 
         # tier 3. Gating needs the judge's answer before the request goes out. With the
-        # local model that costs about 1.5 s, so it waits for judge.inline. With the rules
-        # backend it costs microseconds, and making people opt into latency they are not
-        # paying would mean routing never worked for anyone who had not downloaded 800 MB.
+        # local model that takes about 1.5 s, so it waits for judge.inline. With the rules
+        # backend it takes microseconds, and making people opt into latency they never
+        # feel would mean routing never worked for anyone who had not downloaded 800 MB.
         reroute = None
-        if self.cfg.tier3 and ctx.arm == "treatment" and self._judge_is_cheap():
+        if self.cfg.tier3 and ctx.arm == "treatment" and self._judge_is_fast():
             ctx.signals = await self._signals_inline(norm, ctx)
             if tier3_effort.apply(norm, body, ctx.signals, self.cfg):
                 self.ledger.record_event("effort_set", {"effort": "low"},

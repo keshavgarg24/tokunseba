@@ -3,7 +3,7 @@
 Everything else in tokunseba rewrites a body in place: the same protocol goes in and comes
 out. This is the one module that changes shape, and it exists for one reason. What people
 actually want is to run Claude Code against whatever model suits the turn, a local one for a
-throwaway question and a cheaper API for a summary, and Claude Code speaks the Anthropic
+throwaway question and a lighter API for a summary, and Claude Code speaks the Anthropic
 Messages API to every one of them. Without a translator such a request can only ever reach
 an Anthropic endpoint, which makes routing by prompt content a demo rather than a feature.
 

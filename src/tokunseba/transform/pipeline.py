@@ -92,7 +92,7 @@ class Pipeline:
                                 self.est.count(summary, provider, model), handle if ok else "", "")
 
         # 3. an identical earlier result needs only a pointer, but only when the pointer
-        #    is genuinely cheaper than the thing it replaces
+        #    is genuinely smaller than the thing it replaces
         if ref:
             _idx, ref_sha = ref
             handle, ok = self._store(orig)
@@ -128,7 +128,7 @@ class Pipeline:
                 return TransformRow(key, f"summary:{kind_label}", kept, orig_tokens,
                                     self.est.count(kept, provider, model), self._handle_of(orig), "")
 
-        # 6. a cheaper encoding, only if the tokenizer agrees it is cheaper.
+        # 6. a smaller encoding, only if the tokenizer agrees it is smaller.
         #    A table loses JSON types: null and "" both render empty, true and "true" both
         #    render true. So it carries a handle like every other shortening branch, and the
         #    saving must still clear the bar after paying for that line.

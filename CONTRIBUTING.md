@@ -37,7 +37,7 @@ Every behaviour change needs a test that fails without it. Prefer testing what a
 A few conventions that are easy to trip over:
 
 - The A/B arm is drawn at random per session and only the treatment arm reaches tier 3, so pin it with `monkeypatch.setattr("random.choice", lambda seq: "treatment")` or the test passes half the time for the wrong reason.
-- A module-level `pytest.importorskip` runs at collection time whatever markers the tests carry. Guard expensive imports with `pytest.skip(..., allow_module_level=True)` before the import, not after.
+- A module-level `pytest.importorskip` runs at collection time whatever markers the tests carry. Guard heavy imports with `pytest.skip(..., allow_module_level=True)` before the import, not after.
 - Rich wraps output to the terminal width. Compare on collapsed whitespace rather than exact lines.
 
 The laya smoke tests are opt in because they download 808 MB and load a 2.2 GB model:

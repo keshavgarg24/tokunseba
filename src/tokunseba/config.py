@@ -63,7 +63,7 @@ class JudgeConfig:
     # runs after the response has been dispatched and only feeds the ledger. Turn this on to
     # let it gate tier 3 decisions, at the cost of that latency on the first turn.
     inline: bool = False
-    # Pay the load cost at startup instead of inside somebody's first request. Only ever acts
+    # Take the load time at startup instead of inside somebody's first request. Only ever acts
     # when the judge is enabled and the weights are already on disk; it never downloads.
     warm: bool = False
 

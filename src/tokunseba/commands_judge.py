@@ -26,7 +26,7 @@ EXTRA_HINT = 'uv tool install "tokunseba[laya]"'
 WHAT_IT_BUYS = (
     "It reads the opening prompt of a conversation and labels the domain, the output type "
     "and the difficulty. Those labels sharpen the summariser, and if you turn tier 3 on they "
-    "are what decides whether a turn is easy enough to route to a cheaper or local model."
+    "are what decides whether a turn is easy enough to route to a smaller or local model."
 )
 
 
