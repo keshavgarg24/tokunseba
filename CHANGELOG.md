@@ -18,8 +18,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   survives a restart, Linux uses `~/.config/environment.d`, and Windows prints the
   `setx` lines to run by hand.
 - `TOKUNSEBA_NO_SESSION_ENV` makes tokunseba never read or write the login session.
+- `stats` and `report` show the average provider round trip beside the token counts, and
+  `stats --ab` compares latency per request across the two arms. A request that got
+  smaller but slower is not an improvement, and nothing said so before.
+- `advise` reports the share of context and of answers a routing rule would move, not
+  only the number of conversations. Ten trivial one-liners are not the same prize as one
+  easy conversation carrying 200k tokens of context.
+
+### Removed
+
+- Every currency figure, and the price table behind them. A per-token price is correct
+  for exactly one kind of access and silently wrong for all the others, so `--money`,
+  `pricing.py`, the `pricing` config section and the `cost_usd` and `counterfactual_usd`
+  ledger columns are gone. Savings are reported in tokens, ratios and time, which mean
+  the same thing to everybody. A test now fails if a currency figure comes back.
+- The generated design and plan documents under `docs/`. They described the code as it
+  was going to be written, not as it is, and shipped in the source distribution.
 
 ### Changed
+
+- `budget.daily_usd` becomes `budget.daily_tokens`: a ceiling on tokens read and written
+  in a day, counted from the ledger and including cache reads.
 
 - The "configured but nothing has come through" message now names the Dock case, which
   is the commonest reason for a correct install that records nothing.
@@ -39,8 +58,8 @@ First public release.
   under a prefix are forwarded untouched.
 - Protocol adapters for the Anthropic Messages API, the OpenAI Chat Completions and
   Responses APIs, Gemini, and Ollama, including streaming passthrough.
-- Tier 0 observation: a local SQLite ledger recording tokens, cost, and the
-  counterfactual cost of every request, with per tool, per session, and per project
+- Tier 0 observation: a local SQLite ledger recording tokens, cache behaviour and
+  latency for every request, with per tool, per session, and per project
   breakdowns.
 - Tier 1 lossless transforms: ANSI and progress-bar stripping, repeat collapsing,
   session dedup by reference, diff on re-read, and tokenizer-measured encoding choices.

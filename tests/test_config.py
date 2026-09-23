@@ -22,7 +22,7 @@ def test_nested_sections_roundtrip(home):
     cfg.tier3_opts.model_map = {"claude-opus-5": "claude-sonnet-5"}
     cfg.judge.gate_threshold = 0.9
     cfg.thresholds.truncate_tokens = 1234
-    cfg.budget.daily_usd = 5.0
+    cfg.budget.daily_tokens = 500_000
     cfg.failover.enabled = True
     cfg.failover.routes = {"claude-opus-5": {"upstream": "x", "api_key_env": "K", "header": "x-api-key"}}
     config.save(cfg)
@@ -31,7 +31,7 @@ def test_nested_sections_roundtrip(home):
     assert again.tier3_opts.model_map["claude-opus-5"] == "claude-sonnet-5"
     assert again.judge.gate_threshold == 0.9
     assert again.thresholds.truncate_tokens == 1234
-    assert again.budget.daily_usd == 5.0
+    assert again.budget.daily_tokens == 500_000
     assert again.failover.routes["claude-opus-5"]["header"] == "x-api-key"
 
 

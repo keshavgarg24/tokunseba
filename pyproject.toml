@@ -1,7 +1,7 @@
 [project]
 name = "tokunseba"
 version = "0.1.0"
-description = "Local proxy that cuts LLM token usage for every AI coding tool without changing results"
+description = "One local proxy in front of every AI coding tool, making each request smaller without making it mean less"
 readme = "README.md"
 authors = [{ name = "tokunseba contributors" }]
 license = "MIT"
@@ -14,7 +14,6 @@ keywords = [
   "anthropic",
   "openai",
   "prompt-cache",
-  "cost",
   "cache",
   "cli",
   "agent",
@@ -73,7 +72,6 @@ include = [
   "src/tokunseba",
   "tests",
   "assets",
-  "docs",
   "README.md",
   "CHANGELOG.md",
   "CONTRIBUTING.md",

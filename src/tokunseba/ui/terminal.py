@@ -22,7 +22,7 @@ FALLBACK_COLORS = {"accent": "cyan", "dim": "dim", "good": "green",
 # The canonical explanation of every signal. There is no web page; the terminal is the only
 # place these are described, so a test asserts every emitted signal appears here.
 EVENT_HELP: dict[str, str] = {
-    "cache_drift": "a cached prefix changed, so the next request paid full price",
+    "cache_drift": "a cached prefix changed, so the next request re-read it in full",
     "cache_miss_unexplained": "a cached request read nothing back",
     "cache_injected": "tokunseba added cache breakpoints a client had omitted",
     "secret_detected": "a credential was seen in an outbound request",
@@ -34,7 +34,7 @@ EVENT_HELP: dict[str, str] = {
     "injection_corroborated": "the local judge was asked whether it agreed with a regex hit",
     "secret_redacted": "a credential was replaced before the request left this machine",
     "record_error": "a response was delivered but its usage could not be recorded",
-    "budget_exceeded": "today's spend passed the configured daily budget",
+    "budget_exceeded": "today's tokens passed the configured daily budget",
     "judge_error": "the local judge failed or timed out; the conservative path was taken",
     "effort_set": "an easy turn was sent at low effort",
     "model_routed": "an easy first turn was sent to a cheaper model",
@@ -87,9 +87,14 @@ def k(v) -> str:
     return str(v)
 
 
-def usd(v) -> str:
-    """Currency, only ever reached behind an explicit --money flag."""
-    return f"${float(v or 0):.2f}"
+def ms(v) -> str:
+    """A duration in whatever unit reads fastest. Milliseconds stop being useful past a minute."""
+    v = float(v or 0)
+    if v >= 60_000:
+        return f"{v / 60_000:.1f}m"
+    if v >= 1_000:
+        return f"{v / 1_000:.1f}s"
+    return f"{v:.0f}ms"
 
 
 def bar(value, maximum, width: int = 20) -> str:
@@ -147,12 +152,12 @@ def _empty_table(message: str) -> Table:
 
 
 # --------------------------------------------------------------------------- renderables
-def stat_tiles(stats: dict, money: bool = False, per_row: int = 3) -> Table:
-    """The numbers that answer 'is this worth it' on any billing plan.
+def stat_tiles(stats: dict, per_row: int = 3) -> Table:
+    """The numbers that answer "is this worth it" on any plan.
 
-    Money is deliberately absent unless `money` is passed: per-token prices are wrong for
-    anyone on a subscription, while tokens, ratios and cache behaviour are true for everyone.
-    Tiles wrap onto further rows so the block stays narrow enough for a 100 column report.
+    Everything here is a token count, a ratio or a duration, because those are true whatever
+    access somebody has. Tiles wrap onto further rows so the block stays narrow enough for a
+    100 column report.
     """
     s = stats or {}
     accent, dim, good, warn = style("accent"), style("dim"), style("good"), style("warn")
@@ -166,9 +171,10 @@ def stat_tiles(stats: dict, money: bool = False, per_row: int = 3) -> Table:
         ("avg context", k(round(float(s.get("avg_context") or 0))), "per request", accent),
         ("largest request", k(s.get("max_request_tokens")), "biggest single call", accent),
     ]
-    if money:
-        tiles += [("money saved", usd(s.get("usd_saved")), "versus no tokunseba", good),
-                  ("spent", usd(s.get("usd_spent")), "pay-per-token only", accent)]
+    reqs = int(s.get("requests") or 0)
+    if reqs:
+        tiles.append(("avg round trip", ms(int(s.get("latency_ms") or 0) / reqs),
+                      "provider time per request", accent))
     per_row = max(1, int(per_row))
     t = Table(box=None, show_header=False, pad_edge=False, padding=(0, 3, 0, 0))
     for _ in range(min(per_row, len(tiles))):

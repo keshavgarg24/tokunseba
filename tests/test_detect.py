@@ -355,7 +355,7 @@ def test_doctor_returns_checks_and_never_raises(home, settings, codex_config, pr
     assert drift.ok is True
     budget = next(c for c in checks if c.name == "budget")
     assert budget.ok is True
-    assert budget.detail == "no daily budget set"
+    assert budget.detail == "no daily token ceiling set"
     assert all(c.detail for c in checks)
 
 

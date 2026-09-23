@@ -1,4 +1,6 @@
-"""Add prompt-cache breakpoints where a client forgot them. This changes billing, never output."""
+"""Add prompt-cache breakpoints where a client forgot them.
+
+This changes how much of the prompt is re-read, never what comes back."""
 from __future__ import annotations
 
 import statistics

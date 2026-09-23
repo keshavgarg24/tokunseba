@@ -3,8 +3,8 @@
 The local judge is too slow to sit in front of every request and, on its own admission,
 unreliable on unfamiliar questions. But run over requests that have *already happened*, with
 no latency budget and no ability to affect an answer, it is genuinely useful: it can tell you
-which of your turns looked easy, what those turns actually cost, and what they would have cost
-on a cheaper model.
+which of your turns looked easy and how much context those turns read, which is the part a
+smaller model would no longer have to read.
 
 That turns "should I route by prompt?" from a guess into a measurement you can check before
 letting anything route automatically.
@@ -15,8 +15,6 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-
-from .pricing import Price, price_for
 
 # Laya's difficulty rubric, in order. Index 0 and 1 are the two easy levels.
 DIFFICULTY_LEVELS = ["trivial", "easy", "moderate", "hard"]
@@ -46,7 +44,6 @@ class Turn:
     cache_read: int
     cache_write: int
     output_tokens: int
-    cost_usd: float
     difficulty: float | None = None
     difficulty_confidence: float = 0.0
     domain: str = ""
@@ -64,8 +61,9 @@ class Advice:
     note: str = ""
 
     @property
-    def total_cost(self) -> float:
-        return sum(t.cost_usd for t in self.turns)
+    def total_context(self) -> int:
+        """Everything these turns made a model read, cache included."""
+        return sum(t.input_tokens + t.cache_read + t.cache_write for t in self.turns)
 
     @property
     def easy_turns(self) -> list[Turn]:
@@ -140,7 +138,7 @@ def collect_turns(ledger, bodies_dir: Path, since_ts: float, limit: int = 200) -
             request_id=r["id"], session_id=r["session_id"], model=r["model"],
             provider=r["provider"], prompt=prompt, input_tokens=r["input_tokens"],
             cache_read=r["cache_read"], cache_write=r["cache_write"],
-            output_tokens=r["output_tokens"], cost_usd=r["cost_usd"]))
+            output_tokens=r["output_tokens"]))
     return out
 
 
@@ -187,13 +185,20 @@ def judge_turns(turns: list[Turn], judge_chain, threshold: float) -> Advice:
     return adv
 
 
-def counterfactual_cost(turns: list[Turn], target_model: str, overrides: dict) -> float | None:
-    """What these turns would have cost on another model, at the same token counts."""
-    total = 0.0
-    for t in turns:
-        p: Price | None = price_for(t.provider, target_model, overrides)
-        if p is None:
-            return None
-        total += (t.input_tokens * p.input + t.cache_read * p.cache_read
-                  + t.cache_write * p.cache_write + t.output_tokens * p.output) / 1e6
-    return total
+def movable_share(turns: list[Turn], easy: list[Turn]) -> dict:
+    """How much of the window a routing rule would actually move.
+
+    A count of easy conversations on its own is misleading: ten trivial one-line questions
+    are not the same prize as one easy conversation that dragged 200k tokens of context
+    behind it. This reports the share of context and of answers, not the share of turns.
+    """
+    def ctx(rows: list[Turn]) -> int:
+        return sum(t.input_tokens + t.cache_read + t.cache_write for t in rows)
+
+    all_ctx, all_out = ctx(turns), sum(t.output_tokens for t in turns)
+    easy_ctx, easy_out = ctx(easy), sum(t.output_tokens for t in easy)
+    return {
+        "conversations": len(easy), "of": len(turns),
+        "context": easy_ctx, "context_share": (easy_ctx / all_ctx) if all_ctx else 0.0,
+        "output": easy_out, "output_share": (easy_out / all_out) if all_out else 0.0,
+    }

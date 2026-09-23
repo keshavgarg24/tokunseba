@@ -1,12 +1,12 @@
 """Routing advice, and the measured limits it encodes."""
 from tokunseba.advise import (DIFFICULTY_GATE, DIFFICULTY_LEVELS, EASY_SCORE, Advice, Turn,
-                              counterfactual_cost, first_user_text, strip_wrappers)
+                              first_user_text, movable_share, strip_wrappers)
 
 
 def _turn(**kw):
     base = dict(request_id="r", session_id="s", model="claude-opus-5", provider="anthropic",
                 prompt="p", input_tokens=1000, cache_read=0, cache_write=0,
-                output_tokens=100, cost_usd=0.01)
+                output_tokens=100)
     base.update(kw)
     return Turn(**base)
 
@@ -68,18 +68,23 @@ def test_confident_domains_require_a_high_gate():
     assert list(adv.confident_domains) == ["code"]
 
 
-def test_counterfactual_cost_uses_the_target_price():
-    turns = [_turn(input_tokens=1_000_000, output_tokens=0, cost_usd=5.0)]
-    assert counterfactual_cost(turns, "claude-sonnet-5", {}) == 2.0
-    assert counterfactual_cost(turns, "claude-haiku-4-5", {}) == 1.0
+def test_movable_share_weighs_context_not_conversation_count():
+    """Ten tiny easy turns are not the same prize as one big one, and the report says so."""
+    big = _turn(input_tokens=200_000, output_tokens=1000)
+    small = [_turn(input_tokens=100, output_tokens=10) for _ in range(10)]
+    share = movable_share([big] + small, small)
+    assert share["conversations"] == 10 and share["of"] == 11
+    assert share["context"] == 1000
+    assert share["context_share"] < 0.01
 
 
-def test_counterfactual_returns_none_for_an_unknown_model():
-    assert counterfactual_cost([_turn()], "no-such-model", {}) is None
+def test_movable_share_survives_an_empty_window():
+    assert movable_share([], [])["context_share"] == 0.0
 
 
-def test_total_cost_sums():
-    assert Advice(turns=[_turn(cost_usd=0.1), _turn(cost_usd=0.2)]).total_cost == 0.30000000000000004
+def test_total_context_counts_cache():
+    a = Advice(turns=[_turn(input_tokens=10, cache_read=5, cache_write=1)])
+    assert a.total_context == 16
 
 
 def test_collect_turns_skips_missing_bodies(home, tmp_path):

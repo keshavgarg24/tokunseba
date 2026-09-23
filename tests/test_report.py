@@ -1,9 +1,9 @@
-"""The money-free reporting surface: new ledger queries, new renderers, `tokunseba report`.
+"""The reporting surface: ledger queries, renderers, `tokunseba report`.
 
-The user this was written for is on a flat subscription, so every dollar figure tokunseba
-used to print was wrong for them. These tests pin the replacement: tokens, ratios and cache
-behaviour, which are true on any plan, and the rule that currency only ever appears behind
-an explicit `--money`.
+A currency figure is only correct for one kind of access and silently wrong for every other
+one, so tokunseba does not print any. These tests pin what replaced it: token counts, ratios,
+cache behaviour and round-trip time, which mean the same thing to everybody, and the rule
+that no flag anywhere brings a currency figure back.
 """
 import io
 import json
@@ -39,7 +39,7 @@ def _request(led: Ledger, rid: str, **kw) -> None:
     base = dict(id=rid, ts=time.time(), session_id="s1", tool_id="claude-code", project="/p",
                 provider="anthropic", model="claude-opus-5", stream=False, input_tokens=1000,
                 cache_read=9000, cache_write=0, output_tokens=100, est_tokens_before=5000,
-                est_tokens_after=2000, cost_usd=0.02, counterfactual_usd=0.05, arm="control",
+                est_tokens_after=2000, arm="control",
                 status=200, latency_ms=100, body_path="")
     base.update(kw)
     led.record_request(RequestRecord(**base))
@@ -173,10 +173,10 @@ def test_stats_exposes_the_plan_agnostic_numbers(home):
     assert s["cache_read"] == 29_000
 
 
-def test_stats_still_carries_cost_for_the_json_view(home):
-    """Money stays in the data and the database; it only leaves the rendering."""
+def test_stats_carry_totals_the_tables_have_no_room_for(home):
+    """The JSON view is the full record; the tables are an edit of it, not the whole thing."""
     s = _seed(home).stats(time.time() - 3600)
-    assert s["usd_spent"] > 0 and "usd_saved" in s
+    assert s["total_tokens"] > 0 and s["latency_ms"] > 0
 
 
 # ------------------------------------------------------------------------- renderers
@@ -286,20 +286,18 @@ def test_kv_panel_escapes_user_text():
     assert "[odd]title" in out and "[/bold]x" in out
 
 
-def test_stat_tiles_are_money_free_by_default():
+def test_stat_tiles_report_size_ratios_and_time():
     s = {"tokens_saved": 31_000, "pct_saved": 0.6, "input_tokens": 120_000, "requests": 12,
          "cache_read": 90_000, "cache_hit_rate": 0.75, "fresh_tokens": 30_000,
-         "avg_context": 10_000, "max_request_tokens": 45_000, "usd_spent": 1.23,
-         "usd_saved": 0.41, "by_tool": [{"tool": "claude-code"}]}
+         "avg_context": 10_000, "max_request_tokens": 45_000, "latency_ms": 24_000,
+         "by_tool": [{"tool": "claude-code"}]}
     out = render(T.stat_tiles(s))
-    assert "$" not in out
     assert "tokens saved" in out and "31.0k" in out and "60% of tool output" in out
     assert "fresh tokens" in out and "30.0k" in out
     assert "cache efficiency" in out and "75%" in out
     assert "avg context" in out and "10.0k" in out
     assert "largest request" in out and "45.0k" in out
-    out_money = render(T.stat_tiles(s, money=True))
-    assert "$1.23" in out_money and "$0.41" in out_money
+    assert "avg round trip" in out and "2.0s" in out
 
 
 def test_stat_tiles_survive_an_empty_stats_dict():
@@ -361,10 +359,10 @@ def test_report_save_writes_a_non_empty_plain_text_file(home, dead_port, tmp_pat
     assert "$" not in text
 
 
-def test_report_money_flag_shows_dollars_and_says_what_they_mean(home, dead_port):
+def test_report_says_what_its_figures_are_counted_in(home, dead_port):
     _seed(home)
-    assert "$" in run(["report", "--money"]).output
-    assert "subscription" in run(["report", "--help"]).output.replace("\n", " ")
+    flat = run(["report"]).output.replace("\n", " ")
+    assert "tokens, ratios and time" in flat
 
 
 def test_report_project_filter_narrows_the_request_figures(home, dead_port):
@@ -382,25 +380,26 @@ def test_report_survives_a_bracketed_tool_name(home, dead_port):
 
 
 @pytest.mark.parametrize("args", [["stats"], ["ui"], ["top"], ["report"]])
-def test_no_currency_anywhere_in_the_default_rendering(home, dead_port, args):
-    """The user is on a subscription: a dollar figure is a wrong number, not a small one."""
+def test_no_currency_anywhere_in_the_rendering(home, dead_port, args):
+    """A currency figure is a wrong number here, not a small one. There is no flag for it."""
     _seed(home)
     r = run(args)
     assert r.exit_code == 0, r.output
     assert "$" not in r.output
 
 
-def test_stats_money_flag_is_the_only_way_to_see_dollars(home, dead_port):
+def test_stats_never_print_a_currency_figure(home, dead_port):
+    """Nothing in tokunseba is denominated in currency, on any plan, behind any flag."""
     _seed(home)
     assert "$" not in run(["stats"]).output
-    assert "$" in run(["stats", "--money"]).output
-    assert "subscription" in run(["stats", "--help"]).output.replace("\n", " ")
+    assert "$" not in run(["report"]).output
+    assert run(["stats", "--money"]).exit_code != 0        # the flag does not exist
 
 
-def test_stats_json_keeps_the_cost_columns(home, dead_port):
+def test_stats_json_carries_more_than_the_tables_show(home, dead_port):
     _seed(home)
     s = json.loads(run(["stats", "--json"]).output)
-    assert "usd_spent" in s and "usd_saved" in s and s["fresh_tokens"] == 1800
+    assert s["total_tokens"] > 0 and "latency_ms" in s and s["fresh_tokens"] == 1800
 
 
 def test_statusline_reports_tokens_cache_and_fresh_without_currency(home, dead_port,
@@ -410,7 +409,8 @@ def test_statusline_reports_tokens_cache_and_fresh_without_currency(home, dead_p
     class _Resp:
         def json(self):
             return {"tokens_saved": 5_000, "pct_saved": 0.42, "cache_hit_rate": 0.91,
-                    "fresh_tokens": 1_800, "usd_spent": 1.23, "events": {"cache_drift": 2}}
+                    "fresh_tokens": 1_800, "total_tokens": 42_000,
+                    "events": {"cache_drift": 2}}
 
     monkeypatch.setattr(httpx, "get", lambda *a, **kw: _Resp())
     monkeypatch.setattr(httpx, "post", lambda *a, **kw: None)
@@ -426,3 +426,25 @@ def test_status_shows_fresh_tokens_and_one_next_action(home, dead_port):
     assert "$" not in out
     assert "fresh tokens" in out and "cache" in out
     assert "next:" in out and "tokunseba start" in out   # the proxy is not running
+
+
+def test_no_source_file_reintroduces_a_currency_figure():
+    """A guard, not a style rule.
+
+    Every currency figure tokunseba could print would be correct for exactly one kind of
+    access and quietly wrong for all the others, which is worse than printing nothing. This
+    fails the moment a price, a rate or a dollar sign comes back into the package.
+    """
+    import re
+    from pathlib import Path
+
+    import tokunseba
+    root = Path(tokunseba.__file__).parent
+    banned = re.compile(r"usd|dollar|\$\{?\d|per.token price|price_for|cost_usd", re.I)
+    # `is_sensitive` and the rules backend deliberately match the *user's* prompt against
+    # financial words so those turns are never routed to a smaller model. That is a safety
+    # gate on somebody else's text, not a figure tokunseba prints, so it is exempt.
+    exempt = {"questions.py", "rules.py"}
+    offenders = [f"{p.name}:{i}" for p in root.rglob("*.py") if p.name not in exempt
+                 for i, line in enumerate(p.read_text().splitlines(), 1) if banned.search(line)]
+    assert not offenders, f"currency reintroduced at {offenders}"

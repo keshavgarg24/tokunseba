@@ -18,7 +18,7 @@ DOWNLOAD_MB = 808
 RESIDENT_MB = 2200
 
 # One process loads one copy. Every Proxy instance builds its own LayaJudge, and the test
-# suite and the launch agent can build several, so without this the same 2.2 GB is paid
+# suite and the launch agent can build several, so without this the same 2.2 GB is taken
 # once per instance. Keyed by the checkpoint actually asked for.
 _AGENTS: dict[tuple[str, str], object] = {}
 _AGENT_LOCK = threading.Lock()

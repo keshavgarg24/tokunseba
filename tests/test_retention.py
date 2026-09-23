@@ -12,7 +12,7 @@ def _rec(led, ident, age_days=0.0):
         id=ident, ts=time.time() - age_days * 86400, session_id="s", tool_id="claude-code",
         project="/p", provider="anthropic", model="m", stream=False, input_tokens=10,
         cache_read=0, cache_write=0, output_tokens=1, est_tokens_before=10,
-        est_tokens_after=5, cost_usd=0.0, counterfactual_usd=0.0, arm="", status=200,
+        est_tokens_after=5, arm="", status=200,
         latency_ms=1, body_path=""))
 
 

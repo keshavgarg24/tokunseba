@@ -1,5 +1,5 @@
-"""Ollama native API. Local models are free, so the win here is fitting the context window,
-not saving money: a silently truncated prompt changes the answer."""
+"""Ollama native API. A local model has no quota to protect, so the win here is fitting the
+context window: a silently truncated prompt changes the answer."""
 from __future__ import annotations
 
 from .base import Block, Message, NormalizedRequest, Usage, canonical_json, sha256_text

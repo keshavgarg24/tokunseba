@@ -14,7 +14,7 @@ def run(args, **kw):
 
 def test_version_and_help():
     assert "0.1.0" in run(["--version"]).output
-    assert "Cut token usage" in run(["--help"]).output
+    assert "One local proxy in front of every AI coding tool" in run(["--help"]).output
 
 
 def test_config_show_and_set(home):
@@ -50,8 +50,7 @@ def _seed(home):
         id="req1", ts=__import__("time").time(), session_id="s1", tool_id="claude-code",
         project="/p", provider="anthropic", model="claude-opus-5", stream=False,
         input_tokens=1000, cache_read=9000, cache_write=0, output_tokens=100,
-        est_tokens_before=5000, est_tokens_after=2000, cost_usd=0.02,
-        counterfactual_usd=0.05, arm="control", status=200, latency_ms=100, body_path=""))
+        est_tokens_before=5000, est_tokens_after=2000, arm="control", status=200, latency_ms=100, body_path=""))
     led.record_event("cache_drift", {"region": "system"})
     return led
 
@@ -125,7 +124,7 @@ def test_prune_uses_the_configured_window(home):
         id="old", ts=time.time() - 10 * 86400, session_id="s9", tool_id="claude-code",
         project="/p", provider="anthropic", model="m", stream=False, input_tokens=1,
         cache_read=0, cache_write=0, output_tokens=1, est_tokens_before=1,
-        est_tokens_after=1, cost_usd=0.0, counterfactual_usd=0.0, arm="", status=200,
+        est_tokens_after=1, arm="", status=200,
         latency_ms=1, body_path=""))
     assert run(["prune"]).exit_code == 0
     assert Ledger(home / "ledger.sqlite").stats(0)["requests"] == 1
@@ -200,6 +199,6 @@ def test_stats_survives_a_bracketed_tool_name(home):
         id="r2", ts=__import__("time").time(), session_id="s2", tool_id="[odd]tool",
         project="/p", provider="anthropic", model="m", stream=False, input_tokens=1,
         cache_read=0, cache_write=0, output_tokens=1, est_tokens_before=1,
-        est_tokens_after=1, cost_usd=0.0, counterfactual_usd=0.0, arm="", status=200,
+        est_tokens_after=1, arm="", status=200,
         latency_ms=1, body_path=""))
     assert "[odd]tool" in run(["stats"]).output.replace("\n", "")

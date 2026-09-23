@@ -86,7 +86,10 @@ class Retention:
 
 @dataclass
 class Budget:
-    daily_usd: float = 0.0
+    # A ceiling on tokens read and written in a day, counted from the ledger. Tokens are the
+    # one unit every kind of access has in common, so this means the same thing everywhere.
+    # 0 is off.
+    daily_tokens: int = 0
     hard_stop: bool = False
 
 
@@ -119,7 +122,6 @@ class Config:
     retention: Retention = field(default_factory=Retention)
     failover: Failover = field(default_factory=Failover)
     upstreams: dict[str, Upstream] = field(default_factory=lambda: dict(DEFAULT_UPSTREAMS))
-    pricing_overrides: dict[str, dict[str, float]] = field(default_factory=dict)
 
     def base(self, prefix: str = "") -> str:
         root = f"http://127.0.0.1:{self.port}"
@@ -158,7 +160,6 @@ def load(path: Path | None = None) -> Config:
     for name, u in (raw.get("upstreams", {}) or {}).items():
         if isinstance(u, dict) and "base_url" in u:
             cfg.upstreams[name] = Upstream(base_url=u["base_url"], kind=u.get("kind", "openai"))
-    cfg.pricing_overrides = raw.get("pricing", {}) or {}
     return cfg
 
 
@@ -182,7 +183,6 @@ def save(cfg: Config, path: Path | None = None) -> Path:
         "retention": asdict(cfg.retention),
         "failover": asdict(cfg.failover),
         "upstreams": {k: asdict(v) for k, v in cfg.upstreams.items()},
-        "pricing": cfg.pricing_overrides,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(tomli_w.dumps(doc))

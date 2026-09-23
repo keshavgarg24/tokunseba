@@ -134,7 +134,7 @@ def test_the_listing_shows_the_models_actually_used(home):
     fields = {f: 0 for f in RequestRecord.__dataclass_fields__}
     fields.update(id="r1", ts=time.time(), session_id="s", tool_id="t", project="p",
                   provider="anthropic", model="claude-haiku-4-5-20251001", stream=0,
-                  cost_usd=0.0, counterfactual_usd=0.0, arm="control", status=200,
+                  arm="control", status=200,
                   latency_ms=1, body_path="")
     led.record_request(RequestRecord(**fields))
     assert "claude-haiku-4-5-20251001" in flat(run().output)

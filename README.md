@@ -2,7 +2,7 @@
 
 <img src="assets/logo-wordmark.svg" alt="tokunseba" width="232" height="64">
 
-**A local proxy that cuts token usage for every AI coding tool on your machine, without changing what the model can know.**
+**One local proxy in front of every AI coding tool you run. It makes each request smaller on the way out, keeps every byte it removes retrievable, and measures the result against a control arm instead of promising you a number.**
 
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -13,9 +13,15 @@
 
 ---
 
-tokunseba sits between your coding tools and every model they talk to, cloud or local. It rewrites the parts of a request that cost tokens without carrying information, and it leaves everything else byte for byte alone.
+Coding agents are heavy for a reason that has nothing to do with the model. An agent reads a file, pastes it into the conversation, reads it again four turns later, and carries the entire transcript forward on every single call. The waste is in the request, and it is the same waste in every tool you have installed.
 
-There is no account, no telemetry, and nothing to pay for. The only outbound traffic is to the provider your tool was already using.
+tokunseba is one process on `127.0.0.1` that sits in front of all of them, speaking the Anthropic, OpenAI, Gemini and Ollama protocols, and edits requests on their way out. Repeated tool output collapses to a handle you can expand later. Cache breakpoints get added where a client forgot them. Nothing already sent is ever rewritten, because a prompt cache matches on an exact byte prefix and breaking one wastes far more than any compression recovers.
+
+Three things it will not do:
+
+- **Lose information.** Everything it removes stays retrievable byte for byte with `tokunseba expand`.
+- **Change an answer.** If tokunseba hits a bug, your original request is forwarded untouched and the failure is recorded.
+- **Leave the machine.** No account, no telemetry, no outbound traffic except to the provider your tool was already using.
 
 ## Install
 
@@ -79,13 +85,13 @@ How much tokunseba is allowed to do is a decision you make one layer at a time. 
 | 0 observe | always on | Nothing. Every byte is forwarded exactly as the client sent it. Counts tokens, records what the cache did, writes the ledger. |
 | 1 reversible | on | Tool results only. Strips ANSI codes and progress-bar spam, replaces a repeated result with a pointer, replaces a re-read file with the diff since you last saw it, adds cache breakpoints clients forgot. |
 | 2 reach-preserving | on | The shape of a long tool result. Summarises test, build and install output down to what failed, with a handle to the full text. Replaces lock files and binaries with a one-line description. |
-| 3 opt-in | off | Which model answers, and the text of a request. Routes easy turns to cheaper or local models, redacts credentials, labels suspected prompt injection. |
+| 3 opt-in | off | Which model answers, and the text of a request. Routes easy turns to smaller or local models, redacts credentials, labels suspected prompt injection. |
 
 Tier 3 is the only tier that can change an answer. It is off until you turn it on, and when it is on, sessions are randomly split between a control arm and a treatment arm so the ledger can tell you whether it actually helped.
 
 ## Prompt-driven routing
 
-If you run a subscription coding tool, an API key for something like DeepSeek, and a local model through Ollama, the expensive part is not any one of them. It is that the cheapest capable model never gets the easy turns.
+If you have a coding tool, an API key for something like DeepSeek, and a local model through Ollama, the problem is not any one of them. It is that the smallest capable model never gets the easy turns, because nothing is reading the prompt to decide.
 
 tokunseba reads the opening prompt of each conversation, labels its domain and difficulty, and sends the turn wherever you said turns like that should go.
 
@@ -117,7 +123,7 @@ Four things bound this:
 
 `tokunseba models` shows which of your endpoints each client protocol can reach.
 
-This needs no model, no key and no download. The default judge answers from calibrated rules and costs nothing measurable.
+This needs no model, no key and no download. The default judge answers from calibrated rules in microseconds.
 
 ## The local judge
 
@@ -253,14 +259,14 @@ tokunseba prune --days 30      delete everything older than that, now
 tokunseba run -- pytest -q     run a command with its output already compressed
 tokunseba wrap claude          run one tool through the proxy, no config change
 tokunseba mcp                  MCP server exposing the expand tool
-tokunseba advise               what your prompts looked like, and what routing would save
+tokunseba advise               what your prompts looked like, and what routing would move
 ```
 
 ## Reports
 
 `tokunseba report` is one page covering the whole window: tokens saved per day and per hour, where the compressible mass is by tool-result size, transforms by kind, savings by tool and by model, the biggest untouched blocks, every signal with an explanation, what you asked about by domain and by difficulty, and context growth in the newest session.
 
-Everything is counted in tokens, because tokens are true whether you pay per token or pay a flat subscription. Dollar figures are behind `--money` and off by default.
+Everything is counted in tokens, ratios and time. Those mean the same thing whatever kind of access you have, so nothing in tokunseba is denominated in anything else and no report asks you to configure a price list.
 
 History is kept for 90 days unless you say otherwise:
 
@@ -270,14 +276,14 @@ tokunseba retention keep 1y
 
 ## Why it does not break your prompt cache
 
-A prompt cache matches on an exact byte prefix. Change one byte in a turn you already sent and everything after it reverts to full price, which costs about ten times more than it saves.
+A prompt cache matches on an exact byte prefix. Change one byte in a turn you already sent and every token after it has to be read again from scratch, which is roughly ten times the work the compression saved.
 
 tokunseba only ever transforms content that is new in this request, and it stores every transformation keyed by the hash of its original. The same original always produces the same replacement, forever. Re-sent history stays byte-identical, which also keeps it compatible with models that bind reasoning to an unedited transcript.
 
 It also watches the cache for you. When a client puts a timestamp or a fresh identifier inside its cached prefix, tokunseba records exactly which region drifted and why:
 
 ```
-cache_drift    3    a cached prefix changed, so the next request paid full price
+cache_drift    3    a cached prefix changed, so the next request re-read it in full
 ```
 
 ## Privacy and safety
@@ -294,18 +300,18 @@ cache_drift    3    a cached prefix changed, so the next request paid full price
 
 Savings depend entirely on what you do. Long agentic sessions with heavy tool use are where the wins are. Short chats save almost nothing.
 
-Rather than promise a number, tokunseba ships the measurement first: every request records what it cost and what it would have cost without the proxy, and `stats` shows the difference.
+Rather than promise a number, tokunseba ships the measurement first. Every session is assigned at random to a control arm or a treatment arm, both are recorded in the same ledger, and `tokunseba stats --ab` puts them side by side. A claim you can check against your own traffic is worth more than a number in a README.
 
 For calibration, one realistic agentic turn measured end to end during development, made of a system prompt, a pytest run and a recursive directory listing, went from 45,715 bytes on the wire to 12,461. That is a 72.7% reduction, with every test failure still present in what the model received and the full output one `expand` away. Your numbers will differ.
 
-Judge it on cost per finished task, not per request. A cheaper model that needs two more turns is not cheaper.
+Judge it per finished task, not per request. A smaller model that needs two more turns has not saved you anything, which is why the report shows the average round trip next to the token counts.
 
 ## Configuration
 
 `~/.tokunseba/config.toml`. The commands above cover most of it; anything else is reachable directly:
 
 ```bash
-tokunseba config set budget.daily_usd 5
+tokunseba config set budget.daily_tokens 2000000
 tokunseba config set judge.gate_threshold 0.85
 tokunseba config set thresholds.truncate_tokens 6000
 ```

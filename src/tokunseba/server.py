@@ -1,7 +1,7 @@
 """The proxy itself.
 
 Lifecycle per request: parse, match the session, guard the delta, transform the delta,
-protect the cache, optionally route, forward untouched-in-meaning, then record what it cost.
+protect the cache, optionally route, forward untouched-in-meaning, then record what it took.
 The response body is always streamed back byte for byte.
 """
 from __future__ import annotations
@@ -24,8 +24,6 @@ from .config import Config, home
 from .guards import injection, secrets
 from .judge import build_chain, router_questions
 from .ledger import Ledger, RequestRecord
-from .pricing import cost as price_cost
-from .pricing import counterfactual, price_for
 from .protocols import ADAPTERS
 from .protocols.base import json_get, json_set
 from .session import SessionIndex
@@ -39,7 +37,8 @@ from .transform.pipeline import Pipeline
 BUDGET_BODY = {
     "type": "error",
     "error": {"type": "tokunseba_budget",
-              "message": "daily budget exceeded; run: tokunseba config set budget.hard_stop false"},
+              "message": "daily token budget exceeded; "
+                         "run: tokunseba config set budget.hard_stop false"},
 }
 
 
@@ -404,20 +403,13 @@ class Proxy:
 
     # ---------- recording ----------
     def finish(self, usage, norm, ctx: RequestContext, status: int, t0: float) -> None:
-        p = price_for(norm.provider, norm.model, self.cfg.pricing_overrides)
-        if p is None:
-            c = cf = 0.0
-        else:
-            c = price_cost(usage, p)
-            cf = counterfactual(usage, p, max(ctx.est_before - ctx.est_after, 0),
-                                usage.cache_read if ctx.injected else 0)
         self.ledger.record_request(RequestRecord(
             id=ctx.request_id, ts=time.time(), session_id=ctx.session_id, tool_id=ctx.tool_id,
             project=ctx.project, provider=norm.provider, model=norm.model, stream=norm.stream,
             input_tokens=usage.input_tokens, cache_read=usage.cache_read,
             cache_write=usage.cache_write, output_tokens=usage.output_tokens,
             est_tokens_before=ctx.est_before, est_tokens_after=ctx.est_after,
-            cost_usd=c, counterfactual_usd=cf, arm=ctx.arm, status=status,
+            arm=ctx.arm, status=status,
             latency_ms=int((time.monotonic() - t0) * 1000), body_path=ctx.body_path))
         miss = guardian.post_check(ctx.turn_index, bool(ctx.breakpoints), usage.cache_read)
         if miss:
@@ -470,10 +462,10 @@ def build_app(cfg: Config, ledger: Ledger, transport=None) -> Starlette:
             if up.kind == "gemini" and not norm.model:
                 norm.model = adapter.model_from_path(sub)
             adapter.ensure_stream_usage(body)
-            if cfg.budget.daily_usd > 0:
+            if cfg.budget.daily_tokens > 0:
                 day = time.time() - (time.time() % 86400)
-                if ledger.spend_since(day) > cfg.budget.daily_usd:
-                    ledger.record_event("budget_exceeded", {"limit": cfg.budget.daily_usd})
+                if ledger.tokens_since(day) > cfg.budget.daily_tokens:
+                    ledger.record_event("budget_exceeded", {"limit": cfg.budget.daily_tokens})
                     if cfg.budget.hard_stop:
                         return JSONResponse(BUDGET_BODY, status_code=429)
             try:

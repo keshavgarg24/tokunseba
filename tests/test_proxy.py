@@ -87,13 +87,13 @@ async def test_openai_responses_usage(client, proxy_app):
     assert led.stats(0)["cache_read"] == 150
 
 
-async def test_ollama_ndjson_usage_and_free(client, proxy_app):
+async def test_ollama_ndjson_usage_is_recorded(client, proxy_app):
     _app, _cfg, led, _up = proxy_app
     r = await client.post("/ollama/api/chat",
                           json={"model": "llama3.1", "messages": [{"role": "user", "content": "hi"}]})
     assert r.status_code == 200 and "prompt_eval_count" in r.text
     s = led.stats(0)
-    assert s["requests"] == 1 and s["input_tokens"] == 700 and s["usd_spent"] == 0.0
+    assert s["requests"] == 1 and s["input_tokens"] == 700
 
 
 async def test_gemini_model_from_path(client, proxy_app):
@@ -154,7 +154,7 @@ async def test_secret_is_detected_not_sent_to_blob(client, proxy_app, home):
 async def test_budget_hard_stop(client, proxy_app):
     _app, cfg, led, _up = proxy_app
     await client.post("/anthropic/v1/messages", json=_msg(), headers={"x-api-key": "k"})
-    cfg.budget.daily_usd = 0.0000001
+    cfg.budget.daily_tokens = 1
     cfg.budget.hard_stop = True
     r = await client.post("/anthropic/v1/messages", json=_msg(), headers={"x-api-key": "k"})
     assert r.status_code == 429 and r.json()["error"]["type"] == "tokunseba_budget"
@@ -163,7 +163,7 @@ async def test_budget_hard_stop(client, proxy_app):
 async def test_budget_warn_only_by_default(client, proxy_app):
     _app, cfg, led, _up = proxy_app
     await client.post("/anthropic/v1/messages", json=_msg(), headers={"x-api-key": "k"})
-    cfg.budget.daily_usd = 0.0000001
+    cfg.budget.daily_tokens = 1
     r = await client.post("/anthropic/v1/messages", json=_msg(), headers={"x-api-key": "k"})
     assert r.status_code == 200
     assert led.stats(0)["events"]["budget_exceeded"] >= 1

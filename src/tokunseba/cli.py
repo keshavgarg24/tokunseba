@@ -64,7 +64,12 @@ def _banner(subtitle: str = "") -> str:
 @click.group()
 @click.version_option(__version__, prog_name="tokunseba")
 def main() -> None:
-    """Cut token usage for every AI coding tool on this machine, without changing results."""
+    """One local proxy in front of every AI coding tool on this machine.
+
+    It makes each request smaller on the way out, keeps every byte it removes retrievable
+    with `tokunseba expand`, and forwards your request untouched if anything goes wrong.
+    Start with `tokunseba init`, then `tokunseba doctor`.
+    """
 
 
 # --------------------------------------------------------------------------- setup
@@ -237,11 +242,6 @@ def uninstall() -> None:
     console.print(f"Data left in place at {config.home()} — delete it by hand if you want it gone.")
 
 
-#: The one sentence that has to appear next to every currency figure tokunseba prints.
-MONEY_HELP = ("Also show dollar figures. Only meaningful on pay-per-token API access, "
-              "not on a subscription.")
-
-
 def _next_action(up: bool, s: dict) -> str:
     """The single most useful thing to do next, chosen from what the ledger just showed."""
     events = s.get("events") or {}
@@ -280,26 +280,24 @@ def _routing_warning() -> None:
 @click.option("--since", default="7d", help="e.g. 24h, 7d, 30d")
 @click.option("--project", default=None, help="Filter to one project directory.")
 @click.option("--ab", is_flag=True, help="Compare the tier 3 control and treatment arms.")
-@click.option("--money", is_flag=True, help=MONEY_HELP)
 @click.option("--json", "as_json", is_flag=True)
-def stats(since: str, project: str | None, ab: bool, money: bool, as_json: bool) -> None:
+def stats(since: str, project: str | None, ab: bool, as_json: bool) -> None:
     """Show what tokunseba saved.
 
-    Everything shown is counted in tokens, because tokens are true whether you pay per
-    token or pay a flat subscription. `--money` adds the dollar figures, which are only
-    meaningful on pay-per-token API access.
+    Everything is counted in tokens, ratios and time, because those mean the same thing on
+    every kind of access. Nothing here depends on the kind of access you have.
     """
     from .ui.terminal import by_tool_table, signal_table, stat_tiles, style
     led = _ledger()
     if not as_json:
         _routing_warning()
     s = led.stats(_since(since), project)
-    if as_json:  # the cost columns stay in the data; only the rendering drops them
+    if as_json:  # the full record, including fields no table has room for
         console.print_json(json.dumps(s))
         return
     dim = style("dim")
     console.print(_banner(f"stats · last {since}"))
-    console.print(stat_tiles(s, money=money))
+    console.print(stat_tiles(s))
 
     if s["by_tool"]:
         console.print(f"\n[{dim}]by tool[/]")
@@ -316,17 +314,15 @@ def stats(since: str, project: str | None, ab: bool, money: bool, as_json: bool)
         else:
             a = Table(title="tier 3 arms", title_justify="left", header_style="dim", box=None)
             a.add_column("arm")
-            cols = ["sessions", "requests/session", "input/session", "output/session"]
-            if money:
-                cols.append("$/session")
+            cols = ["sessions", "requests/session", "input/session", "output/session",
+                    "latency/request"]
             for col in cols:
                 a.add_column(col, justify="right")
             for name, v in arms.items():
                 row = [escape(name), str(v["sessions"]), str(v["requests_per_session"]),
                        _k(int(v["input_tokens_per_session"])),
-                       _k(int(v["output_tokens_per_session"]))]
-                if money:
-                    row.append(f"${v['usd_per_session']:.4f}")
+                       _k(int(v["output_tokens_per_session"])),
+                       f"{v['latency_ms_per_request']:.0f}ms"]
                 a.add_row(*row)
             console.print(a)
 
@@ -620,7 +616,7 @@ def _mix_note(mix: dict) -> str:
     return " · ".join(parts) + ("." + tail if tail else ".")
 
 
-def _report_group(data: dict, money: bool = False, problem: str = ""):
+def _report_group(data: dict, problem: str = ""):
     """The whole report as one renderable, so the terminal and the saved file agree.
 
     Every section renders on an empty ledger: the tables say so in words rather than
@@ -662,8 +658,7 @@ def _report_group(data: dict, money: bool = False, problem: str = ""):
         ("sessions", f"{counts['sessions']} across {counts['projects']} projects"),
         ("requests", f"{counts['requests']} on {counts['models']} models"),
         ("tool results", f"{counts['transforms']} seen, {counts['handles']} kept behind handles"),
-        ("counted in", "tokens and dollars" if money else
-         "tokens — dollars only mean something on pay-per-token access (--money)"),
+        ("counted in", "tokens, ratios and time — true on any kind of access"),
     ]
     fresh = sum(int(h.get("input_tokens") or 0) for h in hours)
     cached = sum(int(h.get("cache_read") or 0) for h in hours)
@@ -675,7 +670,7 @@ def _report_group(data: dict, money: bool = False, problem: str = ""):
         "",
         kv_panel("window", pairs),
         "",
-        stat_tiles(s, money=money),
+        stat_tiles(s),
         label("tokens saved per day, last 14 days"),
         line(sparkline(data["daily"])),
         label("tokens saved per hour, last 24 hours"),
@@ -711,23 +706,21 @@ def _report_group(data: dict, money: bool = False, problem: str = ""):
 @click.option("--since", default="7d", show_default=True, help="e.g. 24h, 7d, 30d")
 @click.option("--project", default=None,
               help="Filter the request figures to one project directory.")
-@click.option("--money", is_flag=True, help=MONEY_HELP)
 @click.option("--json", "as_json", is_flag=True, help="Print the same numbers as JSON.")
 @click.option("--save", "save_path", type=click.Path(dir_okay=False, writable=True),
               default=None, help="Also write the plain text rendering to PATH.")
-def report(since: str, project: str | None, money: bool, as_json: bool,
+def report(since: str, project: str | None, as_json: bool,
            save_path: str | None) -> None:
     """The whole picture in one page: context, cache, and where the tokens went.
 
-    Counted in tokens, because tokens are what a subscription and an API key have in
-    common. `--money` adds the dollar figures for pay-per-token access.
+    Counted in tokens, ratios and time, which is what every kind of access has in common.
     """
     led = _ledger()
     data = _report_data(led, since, project)
     if as_json:
         console.print_json(json.dumps(data, default=str))
         return
-    group = _report_group(data, money=money, problem=_routing_problem())
+    group = _report_group(data, problem=_routing_problem())
     console.print(group)
     if save_path:
         out = Path(save_path)
@@ -764,8 +757,8 @@ def statusline() -> None:
     parts = [f"tokunseba · saved {_k(s['tokens_saved'])} ({s['pct_saved'] * 100:.0f}%)",
              f"cache {s['cache_hit_rate'] * 100:.0f}%",
              f"fresh {_k(s.get('fresh_tokens', 0))}"]
-    if cfg.budget.daily_usd > 0:  # only if this machine really is billed per token
-        used = s.get("usd_spent", 0.0) / cfg.budget.daily_usd * 100
+    if cfg.budget.daily_tokens > 0:  # only when somebody has asked for a ceiling
+        used = s.get("total_tokens", 0) / cfg.budget.daily_tokens * 100
         parts.append(f"budget {used:.0f}%")
     drift = s["events"].get("cache_drift", 0)
     if drift:
@@ -782,7 +775,7 @@ def _context_of(turn) -> int:
 @click.option("--since", default="30d", show_default=True)
 @click.option("--limit", default=100, show_default=True, help="Conversations to judge.")
 @click.option("--to", "target", default="claude-sonnet-5", show_default=True,
-              help="The cheaper model to price against.")
+              help="The smaller model to name as the destination.")
 def advise(since: str, limit: int, target: str) -> None:
     """Ask the local judge what your prompts looked like, and what routing them would save.
 
@@ -791,7 +784,7 @@ def advise(since: str, limit: int, target: str) -> None:
     prompt is worth switching on before you switch it on.
     """
 
-    from .advise import EASY_SCORE, collect_turns, judge_turns
+    from .advise import EASY_SCORE, collect_turns, judge_turns, movable_share
     from .judge import build_chain
     from .ui.terminal import style
 
@@ -846,12 +839,16 @@ def advise(since: str, limit: int, target: str) -> None:
         console.print("[dim]None of these scored easy, so there is nothing obvious to "
                       "route away.[/dim]")
     else:
-        context = sum(_context_of(x) for x in easy)
-        output = sum(x.output_tokens for x in easy)
+        share = movable_share(adv.turns, easy)
         console.print(f"[bold]{len(easy)} of {len(adv.turns)} conversations scored "
                       f"easy[/bold] (difficulty at or below {EASY_SCORE})")
-        console.print(f"  context read   {_k(context)} tokens")
-        console.print(f"  answers        {_k(output)} tokens")
+        # The share matters more than the count. Ten trivial one-liners are not the same
+        # prize as one easy conversation that dragged 200k of context behind it, and a
+        # reader who sees only "10 of 11 were easy" will reach the wrong conclusion.
+        console.print(f"  context read   {_k(share['context'])} tokens  "
+                      f"[dim]{share['context_share'] * 100:.0f}% of the window[/dim]")
+        console.print(f"  answers        {_k(share['output'])} tokens  "
+                      f"[dim]{share['output_share'] * 100:.0f}% of the window[/dim]")
         console.print(f"  [{style('good')}]all of that could have run on "
                       f"{escape(target)}[/]")
 

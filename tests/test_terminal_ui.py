@@ -32,21 +32,21 @@ def render(renderable, width: int = 120) -> str:
 
 STATS = {
     "requests": 12, "input_tokens": 120_000, "output_tokens": 4_300,
-    "tokens_saved": 31_000, "usd_spent": 1.23, "usd_saved": 0.41,
+    "tokens_saved": 31_000, "total_tokens": 124_300, "latency_ms": 24_000,
     "cache_read": 90_000, "cache_hit_rate": 0.75, "pct_saved": 0.6,
     "fresh_tokens": 30_000, "avg_context": 10_000, "max_request_tokens": 45_000,
     "events": {"cache_drift": 2, "secret_redacted": 1, "unknown_signal": 5},
-    "by_tool": [{"tool": "claude-code", "requests": 10, "tokens_saved": 30_000, "usd": 1.2},
-                {"tool": "codex", "requests": 2, "tokens_saved": 1_000, "usd": 0.03}],
+    "by_tool": [{"tool": "claude-code", "requests": 10, "tokens_saved": 30_000, "tokens": 110_000},
+                {"tool": "codex", "requests": 2, "tokens_saved": 1_000, "tokens": 14_300}],
 }
 
-DAILY = [{"day": 0, "tokens_saved": 100, "usd_spent": 0.1, "usd_saved": 0.2, "requests": 1},
-         {"day": 86400, "tokens_saved": 5_000, "usd_spent": 0.2, "usd_saved": 0.3, "requests": 4},
-         {"day": 172800, "tokens_saved": 900, "usd_spent": 0.1, "usd_saved": 0.1, "requests": 2}]
+DAILY = [{"day": 0, "tokens_saved": 100, "tokens": 900, "cache_read": 400, "requests": 1},
+         {"day": 86400, "tokens_saved": 5_000, "tokens": 40_000, "cache_read": 9_000, "requests": 4},
+         {"day": 172800, "tokens_saved": 900, "tokens": 7_000, "cache_read": 800, "requests": 2}]
 
 SESSIONS = [{"id": "s1", "last_seen": time.time(), "tool": "claude-code",
              "project": "/Users/x/code/tokunseba", "model": "claude-opus-5", "arm": "control",
-             "requests": 10, "tokens_saved": 30_000, "usd": 1.2}]
+             "requests": 10, "tokens_saved": 30_000, "tokens": 110_000}]
 
 
 def _seed(home, *, drift: bool = False, transforms: bool = True) -> Ledger:
@@ -57,8 +57,7 @@ def _seed(home, *, drift: bool = False, transforms: bool = True) -> Ledger:
         id="req1", ts=time.time(), session_id="s1", tool_id="claude-code",
         project="/p", provider="anthropic", model="claude-opus-5", stream=False,
         input_tokens=1000, cache_read=9000, cache_write=0, output_tokens=100,
-        est_tokens_before=5000, est_tokens_after=2000, cost_usd=0.02,
-        counterfactual_usd=0.05, arm="control", status=200, latency_ms=100, body_path=""))
+        est_tokens_before=5000, est_tokens_after=2000, arm="control", status=200, latency_ms=100, body_path=""))
     if transforms:
         led.put_transform(TransformRow("abc", "summary:pytest", "short version", 900, 40, "h_x", ""))
         led.link_transform("req1", "abc", "('messages',2)", 860)
@@ -117,15 +116,24 @@ def test_stat_tiles_show_the_headline_numbers():
     assert "$" not in out
 
 
-def test_stat_tiles_show_money_only_when_it_is_asked_for():
-    out = render(T.stat_tiles(STATS, money=True))
-    assert "$0.41" in out and "$1.23" in out
+def test_stat_tiles_show_the_average_round_trip():
+    """Latency belongs next to size: a smaller request that takes longer is not a win."""
+    out = render(T.stat_tiles(STATS))
+    assert "avg round trip" in out and "2.0s" in out          # 24s over 12 requests
+
+
+def test_stat_tiles_hide_the_round_trip_when_nothing_was_recorded():
+    assert "avg round trip" not in render(T.stat_tiles({"latency_ms": 0, "requests": 0}))
+
+
+def test_ms_reads_in_whatever_unit_is_useful():
+    assert T.ms(0) == "0ms" and T.ms(940) == "940ms"
+    assert T.ms(2_400) == "2.4s" and T.ms(90_000) == "1.5m"
 
 
 def test_stat_tiles_survive_an_empty_stats_dict():
     out = render(T.stat_tiles({}))
     assert "tokens saved" in out and "0" in out
-    assert "$" not in out
 
 
 def test_by_tool_table_draws_a_proportional_bar():
@@ -143,7 +151,7 @@ def test_by_tool_table_is_explicit_when_empty():
 def test_signal_table_explains_every_signal_it_shows():
     out = render(T.signal_table(STATS["events"]))
     assert "cache_drift" in out
-    assert "paid full price" in out                      # the ported explanation
+    assert "re-read it in full" in out                   # the ported explanation
     assert "secret_redacted" in out and "replaced before" in out
     assert "no explanation recorded" in out              # unknown_signal is still honest
 
@@ -196,10 +204,10 @@ def test_short_project_keeps_the_last_two_segments():
 @pytest.mark.parametrize("name", ["[odd]tool", "[/bold]x", "[dim"])
 def test_a_bracketed_name_survives_rendering(name):
     """Rich would eat [odd] as markup; every user string has to be escaped."""
-    rows = [{"tool": name, "requests": 1, "tokens_saved": 10, "usd": 0.0}]
+    rows = [{"tool": name, "requests": 1, "tokens_saved": 10, "tokens": 100}]
     assert name in render(T.by_tool_table(rows)).replace("\n", "")
     sess = [{"last_seen": time.time(), "tool": name, "project": "/a/b",
-             "model": name, "requests": 1, "tokens_saved": 1, "usd": 0.0}]
+             "model": name, "requests": 1, "tokens_saved": 1, "tokens": 10}]
     assert name in render(T.sessions_table(sess)).replace("\n", "")
 
 
@@ -231,7 +239,7 @@ def test_ui_survives_a_bracketed_tool_name(home):
         id="r2", ts=time.time(), session_id="s2", tool_id="[odd]tool", project="/p",
         provider="anthropic", model="m", stream=False, input_tokens=1, cache_read=0,
         cache_write=0, output_tokens=1, est_tokens_before=1, est_tokens_after=1,
-        cost_usd=0.0, counterfactual_usd=0.0, arm="", status=200, latency_ms=1,
+        arm="", status=200, latency_ms=1,
         body_path=""))
     assert "[odd]tool" in run(["ui"]).output.replace("\n", "")
 

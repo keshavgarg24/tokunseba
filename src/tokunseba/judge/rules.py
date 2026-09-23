@@ -1,6 +1,6 @@
 """Deterministic backend. Always available, costs nothing, never wrong about what it knows.
 
-This backend exists so that prompt-aware routing is not a paid feature. It answers the same
+This backend exists so prompt-aware routing works without a download. It answers the same
 router questions the local model answers, from regexes and counts, and it reports an honest
 confidence for each one. Everything downstream is gated on that confidence, so a heuristic
 that is unsure changes nothing: the turn goes to the model it was already going to.

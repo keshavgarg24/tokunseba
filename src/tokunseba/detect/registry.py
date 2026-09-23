@@ -207,10 +207,10 @@ def doctor(cfg: Any, ledger: Any) -> list[Check]:
 
     checks.append(_cache_drift(ledger))
 
-    daily = getattr(cfg.budget, "daily_usd", 0.0)
+    daily = int(getattr(cfg.budget, "daily_tokens", 0) or 0)
     checks.append(Check(
         "budget", True,
-        f"daily budget ${daily:.2f}" if daily else "no daily budget set",
+        f"daily ceiling {daily:,} tokens" if daily else "no daily token ceiling set",
     ))
 
     try:

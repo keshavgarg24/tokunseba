@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS requests(
   provider TEXT, model TEXT, stream INTEGER,
   input_tokens INTEGER, cache_read INTEGER, cache_write INTEGER, output_tokens INTEGER,
   est_tokens_before INTEGER, est_tokens_after INTEGER,
-  cost_usd REAL, counterfactual_usd REAL, arm TEXT, status INTEGER, latency_ms INTEGER, body_path TEXT);
+  arm TEXT, status INTEGER, latency_ms INTEGER, body_path TEXT);
 CREATE TABLE IF NOT EXISTS transforms(
   orig_sha TEXT PRIMARY KEY, kind TEXT, transformed TEXT, orig_tokens INTEGER, new_tokens INTEGER,
   handle TEXT, ref_sha TEXT, created REAL);
@@ -56,8 +56,6 @@ class RequestRecord:
     output_tokens: int
     est_tokens_before: int
     est_tokens_after: int
-    cost_usd: float
-    counterfactual_usd: float
     arm: str
     status: int
     latency_ms: int
@@ -174,13 +172,21 @@ class Ledger:
         return [r[0] for r in self._conn.execute(
             "SELECT session_id FROM tool_sessions WHERE ts>=?", (time.time() - within_seconds,))]
 
-    def spend_since(self, since_ts: float, project: str | None = None) -> float:
+    def tokens_since(self, since_ts: float, project: str | None = None) -> int:
+        """Everything read and written since ``since_ts``, cache included.
+
+        Cache reads are counted because they are still tokens the provider served, and a
+        runaway loop shows up there first: a session that re-reads a 100k prefix a hundred
+        times has done real work whatever anyone's plan says about it.
+        """
         where, args = "ts>=?", [since_ts]
         if project:
             where += " AND project=?"
             args.append(project)
-        row = self._conn.execute(f"SELECT COALESCE(SUM(cost_usd),0) FROM requests WHERE {where}", args).fetchone()
-        return float(row[0])
+        row = self._conn.execute(
+            f"""SELECT COALESCE(SUM(input_tokens+cache_read+cache_write+output_tokens),0)
+                FROM requests WHERE {where}""", args).fetchone()
+        return int(row[0])
 
     def events(self, kind: str | None = None, limit: int = 200) -> list[dict]:
         if kind:
@@ -198,11 +204,11 @@ class Ledger:
         rows = self._conn.execute(
             """SELECT s.id, s.last_seen, s.tool_id, s.project, s.model, s.arm,
                       COUNT(r.id), COALESCE(SUM(r.est_tokens_before-r.est_tokens_after),0),
-                      COALESCE(SUM(r.cost_usd),0)
+                      COALESCE(SUM(r.input_tokens+r.cache_read+r.cache_write+r.output_tokens),0)
                FROM sessions s LEFT JOIN requests r ON r.session_id=s.id
                GROUP BY s.id ORDER BY s.last_seen DESC LIMIT ?""", (limit,)).fetchall()
         return [{"id": a, "last_seen": b, "tool": c, "project": d, "model": e, "arm": f,
-                 "requests": g, "tokens_saved": h, "usd": round(i, 4)} for a, b, c, d, e, f, g, h, i in rows]
+                 "requests": g, "tokens_saved": h, "tokens": i} for a, b, c, d, e, f, g, h, i in rows]
 
     def transforms_for(self, request_id: str) -> list[dict]:
         rows = self._conn.execute(
@@ -254,10 +260,11 @@ class Ledger:
         since = time.time() - days * 86400
         rows = self._conn.execute(
             """SELECT CAST(ts/86400 AS INTEGER) d, COALESCE(SUM(est_tokens_before-est_tokens_after),0),
-                      COALESCE(SUM(cost_usd),0), COALESCE(SUM(counterfactual_usd-cost_usd),0), COUNT(*)
+                      COALESCE(SUM(input_tokens+cache_read+cache_write+output_tokens),0),
+                      COALESCE(SUM(cache_read),0), COUNT(*)
                FROM requests WHERE ts>=? GROUP BY d ORDER BY d""", (since,)).fetchall()
-        return [{"day": int(d * 86400), "tokens_saved": s, "usd_spent": round(c, 4),
-                 "usd_saved": round(v, 4), "requests": n} for d, s, c, v, n in rows]
+        return [{"day": int(d * 86400), "tokens_saved": s, "tokens": t,
+                 "cache_read": c, "requests": n} for d, s, t, c, n in rows]
 
     def stats(self, since_ts: float, project: str | None = None) -> dict:
         where, args = "ts>=?", [since_ts]
@@ -267,7 +274,8 @@ class Ledger:
         row = self._conn.execute(
             f"""SELECT COUNT(*), COALESCE(SUM(input_tokens+cache_read+cache_write),0),
                 COALESCE(SUM(output_tokens),0), COALESCE(SUM(est_tokens_before-est_tokens_after),0),
-                COALESCE(SUM(cost_usd),0), COALESCE(SUM(counterfactual_usd-cost_usd),0),
+                COALESCE(SUM(input_tokens+cache_read+cache_write+output_tokens),0),
+                COALESCE(SUM(latency_ms),0),
                 COALESCE(SUM(cache_read),0), COALESCE(SUM(est_tokens_before),0),
                 COALESCE(SUM(input_tokens),0),
                 COALESCE(MAX(input_tokens+cache_read+cache_write),0)
@@ -276,22 +284,26 @@ class Ledger:
             "SELECT kind, COUNT(*) FROM events WHERE ts>=? GROUP BY kind ORDER BY 2 DESC", (since_ts,)).fetchall())
         by_tool = self._conn.execute(
             f"""SELECT tool_id, COUNT(*), COALESCE(SUM(est_tokens_before-est_tokens_after),0),
-                COALESCE(SUM(cost_usd),0) FROM requests WHERE {where} GROUP BY tool_id ORDER BY 3 DESC""",
+                COALESCE(SUM(input_tokens+cache_read+cache_write+output_tokens),0)
+                FROM requests WHERE {where} GROUP BY tool_id ORDER BY 3 DESC""",
             args).fetchall()
         total_in, before, requests = row[1], row[7], row[0]
         return {
             "requests": requests, "input_tokens": total_in, "output_tokens": row[2],
-            "tokens_saved": row[3], "usd_spent": round(row[4], 4), "usd_saved": round(row[5], 4),
+            "tokens_saved": row[3], "total_tokens": row[4],
+            # Wall clock the provider spent on this window. It is the one figure that says
+            # whether a change made the day faster as well as smaller.
+            "latency_ms": row[5],
             "cache_read": row[6],
-            # The part of the context that was not served from cache: on a subscription this
-            # is what actually burns quota, so it is reported next to the cache hit rate.
+            # The part of the context that was not served from cache. This is the number a
+            # rate limit actually watches, so it is reported next to the cache hit rate.
             "fresh_tokens": row[8],
             "max_request_tokens": row[9],
             "avg_context": (total_in / requests) if requests else 0.0,
             "cache_hit_rate": (row[6] / total_in) if total_in else 0.0,
             "pct_saved": (row[3] / before) if before else 0.0,
             "events": events,
-            "by_tool": [{"tool": t, "requests": n, "tokens_saved": s, "usd": round(c, 4)}
+            "by_tool": [{"tool": t, "requests": n, "tokens_saved": s, "tokens": c}
                         for t, n, s, c in by_tool],
         }
 
@@ -299,32 +311,32 @@ class Ledger:
         rows = self._conn.execute(
             """SELECT arm, COUNT(DISTINCT session_id), COUNT(*),
                       COALESCE(SUM(input_tokens+cache_read+cache_write),0),
-                      COALESCE(SUM(output_tokens),0), COALESCE(SUM(cost_usd),0)
+                      COALESCE(SUM(output_tokens),0), COALESCE(SUM(latency_ms),0)
                FROM requests WHERE ts>=? AND arm<>'' GROUP BY arm""", (since_ts,)).fetchall()
         out = {}
-        for arm, sess, reqs, inp, outp, usd in rows:
+        for arm, sess, reqs, inp, outp, ms in rows:
             s = max(sess, 1)
             out[arm] = {"sessions": sess, "requests": reqs,
                         "requests_per_session": round(reqs / s, 2),
                         "input_tokens_per_session": round(inp / s, 1),
                         "output_tokens_per_session": round(outp / s, 1),
-                        "usd_per_session": round(usd / s, 5)}
+                        "latency_ms_per_request": round(ms / max(reqs, 1), 1)}
         return out
 
     def first_requests(self, since_ts: float, limit: int = 200) -> list[dict]:
         """The opening request of each conversation, which is what a router would see."""
         rows = self._conn.execute(
             """SELECT id, session_id, model, provider, input_tokens, cache_read, cache_write,
-                      output_tokens, cost_usd, MIN(ts)
+                      output_tokens, MIN(ts)
                FROM requests WHERE ts>=? GROUP BY session_id ORDER BY MIN(ts) DESC LIMIT ?""",
             (since_ts, limit)).fetchall()
         keys = ("id", "session_id", "model", "provider", "input_tokens", "cache_read",
-                "cache_write", "output_tokens", "cost_usd")
+                "cache_write", "output_tokens")
         return [dict(zip(keys, r[:-1])) for r in rows]
 
     # --- analysis queries -------------------------------------------------
-    # Everything below is deliberately plan-agnostic: tokens, ratios and cache behaviour are
-    # true whether you pay per token or pay a subscription. No currency is selected here.
+    # Everything below is deliberately plan-agnostic: tokens, ratios and cache behaviour mean
+    # the same thing on every kind of access, so nothing here has to know which one this is.
     def context_growth(self, session_id: str) -> list[dict]:
         """Every request of one session in order, so context growth is visible turn by turn.
 
