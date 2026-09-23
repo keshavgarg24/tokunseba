@@ -262,6 +262,24 @@ def test_verify_passes_on_a_healthy_ledger(home, monkeypatch):
     assert "pass" in flat and "summary:pytest" in flat
 
 
+def test_an_advisory_failure_is_footnoted_by_what_happened_not_by_its_name(home, monkeypatch):
+    """Checks are named for the good state, so the name of a failing one is a lie.
+
+    "no cache drift" printed as the reason verify was less than clean reads as a
+    reassurance that there was none, which is the opposite of what it means.
+    """
+    from tokunseba.ledger import Ledger
+    _healthy(monkeypatch)
+    _seed(home)
+    led = Ledger(home / "ledger.sqlite")
+    for i in range(6):
+        led.record_event("cache_drift", {"region": "system"}, session_id="s", request_id=f"r{i}")
+    led.close()
+    out = " ".join(run(["verify"]).output.split())
+    assert "6 drift signals" in out
+    assert "(no cache drift)" not in out
+
+
 def test_verify_fails_when_nothing_is_being_transformed(home, monkeypatch):
     _healthy(monkeypatch)
     _seed(home, transforms=False)

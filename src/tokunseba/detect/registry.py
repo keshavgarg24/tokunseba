@@ -97,6 +97,32 @@ def detect_all() -> list[ToolStatus]:
     return out
 
 
+def plan_all(cfg: Any, hooks: bool = True, mcp: bool = False) -> list[str]:
+    """Every change `apply_all` would make, in the order it would make it.
+
+    `init` is the first command anybody runs and it edits files the user did not write and
+    may not know about. Printing this first costs one screen and makes the difference
+    between a tool that configures itself and a tool that configures itself behind your
+    back. Kept next to `apply_all` so the two cannot drift apart unnoticed.
+    """
+    lines = [
+        f"write {claude_code.SETTINGS}",
+        f"    env.ANTHROPIC_BASE_URL = {cfg.base('anthropic')}",
+    ]
+    if hooks:
+        lines.append("    a SessionStart hook and a status line, only if you have none")
+    lines += [
+        f"write {codex.CONFIG}",
+        f"    model_provider = 'tokunseba' pointing at {cfg.base('openai')}/v1",
+        f"write {envfile.env_sh()}",
+        "    the four base-URL exports",
+        f"source that file from {envfile.profile_path()}, once",
+    ]
+    if mcp:
+        lines.append(f"register the mcp server {MCP_NAME} with claude, at user scope")
+    return lines
+
+
 def apply_all(cfg: Any, hooks: bool = True, mcp: bool = False) -> list[str]:
     paths = [
         claude_code.apply(cfg.base("anthropic"), hooks=hooks),

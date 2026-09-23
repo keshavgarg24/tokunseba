@@ -98,3 +98,29 @@ def test_prune_keep_does_not_change_the_saved_window(app, home):
     run(app, ["retention", "keep", "1y"])
     run(app, ["retention", "prune", "--keep", "1d"])
     assert config.load().retention.days == 365
+
+
+def test_show_dates_the_oldest_row_rather_than_crashing_on_it(app, home):
+    """`show` was only ever exercised on an empty ledger, so this never came up.
+
+    `daily()` returns the day bucket as a unix timestamp. Handing that integer to rich's
+    markup escaper raised TypeError, which meant the command worked until the moment the
+    user had any history at all: exactly backwards.
+    """
+    import time as _time
+
+    from tokunseba.ledger import Ledger, RequestRecord
+    led = Ledger(home / "ledger.sqlite")
+    led.upsert_session("s1", "claude-code", "/p", "anthropic", "claude-opus-5", "control")
+    led.record_request(RequestRecord(
+        id="r1", ts=_time.time() - 3 * 86400, session_id="s1", tool_id="claude-code",
+        project="/p", provider="anthropic", model="claude-opus-5", stream=False,
+        input_tokens=100, cache_read=0, cache_write=0, output_tokens=10,
+        est_tokens_before=200, est_tokens_after=150, arm="control",
+        status=200, latency_ms=400, body_path=""))
+    led.close()
+
+    out = flat(run(app, ["retention", "show"]))
+    assert "nothing yet" not in out
+    assert _time.strftime("%Y", _time.localtime(_time.time() - 3 * 86400)) in out
+    assert "days ago" in out, "a bare date makes the reader do the subtraction"

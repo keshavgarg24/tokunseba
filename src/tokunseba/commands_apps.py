@@ -55,9 +55,17 @@ def register(main: click.Group) -> None:
         port = config.load().port
         if not guiapps.supported():
             console.print(f"[dim]{escape(WHY)}[/dim]\n")
-            console.print("[yellow]This platform has no per-session environment tokunseba "
-                          "can set for you.[/yellow] Run these once, then sign out and "
-                          "back in:\n")
+            # Two very different reasons end up here and saying the wrong one is worse than
+            # saying nothing: a user who set the seal on purpose should not be told their
+            # operating system is at fault.
+            if guiapps.sealed():
+                console.print(f"[yellow]{guiapps.SEAL} is set, so tokunseba will not read or "
+                              "write your login session.[/yellow] Unset it to use this "
+                              "command, or run these yourself:\n")
+            else:
+                console.print("[yellow]This platform has no per-session environment tokunseba "
+                              "can set for you.[/yellow] Run these once, then sign out and "
+                              "back in:\n")
             for line in guiapps.manual(port):
                 console.print(f"  {escape(line)}")
             return
@@ -107,7 +115,9 @@ def register(main: click.Group) -> None:
         """Stop routing Dock-launched applications. Terminals are not affected."""
         port = config.load().port
         if not guiapps.supported():
-            console.print("[dim]Nothing to remove on this platform.[/dim]")
+            console.print(f"[dim]{guiapps.SEAL} is set, so the login session was not "
+                          "touched.[/dim]" if guiapps.sealed()
+                          else "[dim]Nothing to remove on this platform.[/dim]")
             return
         for line in guiapps.restore(port):
             console.print(f"  {escape(line)}")

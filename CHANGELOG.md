@@ -24,6 +24,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `advise` reports the share of context and of answers a routing rule would move, not
   only the number of conversations. Ten trivial one-liners are not the same prize as one
   easy conversation carrying 200k tokens of context.
+- `init` prints every file it will change, what it needs (nothing but the machine), and
+  how to undo it, then asks. `--dry-run` prints the plan and stops; `-y` skips the
+  question for scripts and images. It used to start writing to the home directory
+  immediately, which is a poor introduction for the first command anybody runs.
+
+### Fixed
+
+- `retention show` crashed with a `TypeError` on any non-empty ledger: the oldest day
+  arrived as a unix timestamp and went straight to rich's markup escaper. It now reads
+  as a date and says how long ago that was. The unit tests only ever ran it on an empty
+  ledger, which is why it shipped.
+- `verify` footnoted an advisory failure with the check's name, so six cache drift
+  signals were reported as `(no cache drift)`. It now prints what actually happened.
+- `apps` blamed the operating system when `TOKUNSEBA_NO_SESSION_ENV` was what stopped
+  it, telling macOS users macOS could not do this.
 
 ### Removed
 

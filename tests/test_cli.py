@@ -12,6 +12,11 @@ def run(args, **kw):
     return CliRunner().invoke(main, args, **kw)
 
 
+def flat(text: str) -> str:
+    """Rich wraps to the terminal width, so a sentence can straddle a newline."""
+    return " ".join(text.split())
+
+
 def test_version_and_help():
     assert "0.1.0" in run(["--version"]).output
     assert "One local proxy in front of every AI coding tool" in run(["--help"]).output
@@ -149,7 +154,7 @@ def test_init_and_off_do_not_touch_real_files(home, tmp_path, monkeypatch):
     monkeypatch.setattr(claude_code, "SETTINGS", tmp_path / "s.json")
     monkeypatch.setattr(codex, "CONFIG", tmp_path / "c.toml")
     monkeypatch.setattr(envfile, "PROFILE_OVERRIDE", tmp_path / "profile")
-    r = run(["init", "--no-service"])
+    r = run(["init", "--no-service", "-y"])
     assert r.exit_code == 0, r.output
     assert "Tools" in r.output
     assert (tmp_path / "s.json").exists() and (tmp_path / "profile").exists()
@@ -157,6 +162,46 @@ def test_init_and_off_do_not_touch_real_files(home, tmp_path, monkeypatch):
     r2 = run(["off"])
     assert r2.exit_code == 0
     assert "tokunseba" not in (tmp_path / "profile").read_text()
+
+
+def _sandboxed_paths(tmp_path, monkeypatch):
+    from tokunseba.detect import claude_code, codex, envfile, registry
+    monkeypatch.setattr(registry.shutil, "which", lambda _n: None)
+    monkeypatch.setattr(claude_code, "SETTINGS", tmp_path / "s.json")
+    monkeypatch.setattr(codex, "CONFIG", tmp_path / "c.toml")
+    monkeypatch.setattr(envfile, "PROFILE_OVERRIDE", tmp_path / "profile")
+
+
+def test_init_says_what_it_will_change_before_it_changes_it(home, tmp_path, monkeypatch):
+    """The first command anybody runs edits files they did not write. It has to say so."""
+    _sandboxed_paths(tmp_path, monkeypatch)
+    out = flat(run(["init", "--no-service", "--dry-run"]).output)
+    assert "This will change files in your home directory" in out
+    assert str(tmp_path / "s.json") in out.replace(" ", "")
+    assert str(tmp_path / "profile") in out.replace(" ", "")
+    assert "tokunseba off" in out, "a change nobody can undo is not a change worth offering"
+    assert "No account, no key, no network call" in out
+    assert not (tmp_path / "s.json").exists(), "a dry run that writes is not a dry run"
+
+
+def test_init_can_be_refused(home, tmp_path, monkeypatch):
+    _sandboxed_paths(tmp_path, monkeypatch)
+    r = run(["init", "--no-service"], input="n\n")
+    assert r.exit_code == 0 and "Nothing changed" in r.output
+    assert not (tmp_path / "s.json").exists()
+
+
+def test_init_yes_skips_the_question_for_scripts(home, tmp_path, monkeypatch):
+    _sandboxed_paths(tmp_path, monkeypatch)
+    r = run(["init", "--no-service", "-y"])
+    assert r.exit_code == 0 and "Go ahead?" not in r.output
+    assert (tmp_path / "s.json").exists()
+
+
+def test_the_plan_names_the_service_only_when_one_is_installed(home, tmp_path, monkeypatch):
+    _sandboxed_paths(tmp_path, monkeypatch)
+    assert "background service" in flat(run(["init", "--dry-run"]).output)
+    assert "background service" not in flat(run(["init", "--no-service", "--dry-run"]).output)
 
 
 def test_doctor_runs_and_reports(home, tmp_path, monkeypatch):

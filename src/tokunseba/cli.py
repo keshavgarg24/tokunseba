@@ -79,14 +79,39 @@ def main() -> None:
 @click.option("--with-mcp", is_flag=True,
               help="Register the MCP expand tool. Only needed for agents with no shell; "
                    "it costs one background process per session.")
-def init(no_service: bool, no_hooks: bool, with_mcp: bool) -> None:
+@click.option("-y", "--yes", is_flag=True, help="Do not ask. For scripts and images.")
+@click.option("--dry-run", is_flag=True, help="Print what it would change and stop.")
+def init(no_service: bool, no_hooks: bool, with_mcp: bool, yes: bool, dry_run: bool) -> None:
     """Point every supported tool at the proxy and start it in the background."""
     from . import service
     from .detect import registry
     cfg = config.load()
-    config.save(cfg)
 
-    console.print("[bold]Configuring tools[/bold]")
+    # Everything this writes, before any of it is written. init is the first command anybody
+    # runs and it edits files in the home directory that the user did not create and may not
+    # know exist. A setup step that explains itself and can be refused is the difference
+    # between a tool you installed and a tool that installed itself.
+    console.print("[bold]This will change files in your home directory.[/bold]\n")
+    for line in registry.plan_all(cfg, hooks=not no_hooks, mcp=with_mcp):
+        console.print(f"  {escape(line)}")
+    if not no_service:
+        console.print(f"  install and load the background service at {escape(str(_service_path()))}")
+    console.print(
+        "\n[dim]Needs: nothing but this machine. No account, no key, no network call, "
+        "nothing uploaded. Each tool config is copied to "
+        f"{escape(str(config.home() / 'backups'))} before it is touched and your shell "
+        "profile gets one marked block, so [bold]tokunseba off[/bold] puts all of it back. "
+        "Requests keep their own API keys and still go to the same provider; tokunseba only "
+        "makes them smaller on the way.[/dim]")
+    if dry_run:
+        console.print("\n[dim]Dry run, nothing changed.[/dim]")
+        return
+    if not yes and not click.confirm("\nGo ahead?", default=True):
+        console.print("[dim]Nothing changed.[/dim]")
+        return
+
+    config.save(cfg)
+    console.print("\n[bold]Configuring tools[/bold]")
     for line in registry.apply_all(cfg, hooks=not no_hooks, mcp=with_mcp):
         console.print(f"  {escape(str(line))}")
 
@@ -97,6 +122,13 @@ def init(no_service: bool, no_hooks: bool, with_mcp: bool) -> None:
     _print_tools(registry.detect_all())
     console.print("\nOpen a new shell so the environment block takes effect, then run: "
                   "[bold]tokunseba doctor[/bold]")
+
+
+def _service_path():
+    """Where the background service file goes, without importing service until asked."""
+    from .service import plist_path, unit_path
+    import platform
+    return plist_path() if platform.system() == "Darwin" else unit_path()
 
 
 def _print_tools(tools) -> None:
@@ -528,7 +560,10 @@ def verify() -> None:
         console.print(transform_kind_table(summary))
 
     failed = [name for name, ok, _d, essential in checks if essential and not ok]
-    advisory = [name for name, ok, _d, essential in checks if not essential and not ok]
+    # The detail, not the name: half these checks are named for the good state, so printing
+    # the name of a failing one says the opposite of what happened. "no cache drift" as a
+    # footnote reads as reassurance when it means six of them.
+    advisory = [d for _n, ok, d, essential in checks if not essential and not ok]
     if failed:
         console.print(f"\n[{style('bad')}]not verified[/] — failed: "
                       + escape("; ".join(failed)))
@@ -537,7 +572,7 @@ def verify() -> None:
     if advisory:
         note = " [dim](" + escape("; ".join(advisory)) + ")[/dim]"
     console.print(f"\n[{style('good')}]verified[/] — {k(saved)} tokens saved in the last 24h"
-                  f" across {applied} transforms.{note}")
+                  f" across {applied} transform{'s' if applied != 1 else ''}.{note}")
 
 
 # --------------------------------------------------------------------------- top

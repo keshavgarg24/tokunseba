@@ -70,8 +70,19 @@ def _dir_mb(path: Path) -> float:
 
 
 def _oldest_day(led) -> str:
+    """The first day still in the ledger, as a date a person can read.
+
+    `daily()` buckets by day and returns the bucket as a unix timestamp, so this has to
+    format it. A bare integer here once reached rich's markup escaper and crashed the
+    command for anybody whose ledger was not empty.
+    """
     rows = led.daily(3650)
-    return rows[0]["day"] if rows else ""
+    if not rows:
+        return ""
+    day = int(rows[0]["day"])
+    age = int((time.time() - day) // 86400)
+    stamp = time.strftime("%b %d %Y", time.localtime(day))
+    return stamp if age < 1 else f"{stamp} · {age} days ago"
 
 
 def register(main: click.Group) -> None:

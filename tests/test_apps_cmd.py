@@ -251,3 +251,18 @@ def test_yes_skips_the_question(home, monkeypatch):
     out = _stop("", "-y").output
     assert "stopped" in out
     assert "fail to connect" not in out
+
+
+def test_the_seal_is_not_reported_as_a_platform_limitation(home, monkeypatch):
+    """A user who set the seal deliberately should not be told their OS is at fault.
+
+    `supported()` folds two unrelated reasons into one boolean, so the message that reads it
+    has to pull them apart again or it tells a macOS user macOS cannot do this.
+    """
+    monkeypatch.setenv(guiapps.SEAL, "1")
+    monkeypatch.setattr(guiapps, "system", lambda: "macos")
+    for args in (("status",), ("off",)):
+        out = flat(run(*args).output)
+        assert guiapps.SEAL + " is set" in out
+        assert "no per-session environment" not in out
+        assert "on this platform" not in out
