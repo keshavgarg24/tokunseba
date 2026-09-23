@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import random
 import time
 from dataclasses import dataclass, field
@@ -21,7 +22,7 @@ from starlette.routing import Route
 from .cache import guardian, inject
 from .config import Config, home
 from .guards import injection, secrets
-from .judge import build_chain
+from .judge import build_chain, router_questions
 from .ledger import Ledger, RequestRecord
 from .pricing import cost as price_cost
 from .pricing import counterfactual, price_for
@@ -104,6 +105,36 @@ class Proxy:
         self.bodies = home() / "bodies"
         if cfg.store_bodies:
             self.bodies.mkdir(parents=True, exist_ok=True)
+        self._warm_judge()
+        from .retention import maybe_run
+        pruned = maybe_run(cfg, ledger, home())
+        if pruned and not pruned.get("skipped"):
+            ledger.record_event("pruned", pruned)
+
+    def _warm_judge(self) -> None:
+        """Load the local judge once, off the request path, and only if it is already on disk.
+
+        Three conditions all have to hold, because the load costs about 2.2 GB of resident
+        memory: the user enabled the judge, asked for it to be warmed, and already has the
+        weights. Downloading is never implicit; `tokunseba judge install` fetches them.
+        """
+        j = self.cfg.judge
+        if not (j.enabled and j.warm) or os.environ.get("TOKUNSEBA_NO_WARM"):
+            return
+        import threading
+        from .judge.laya_judge import weights_cached
+        if not weights_cached(j.laya_model):
+            return
+
+        def load() -> None:
+            for b in self.judge.backends:
+                if getattr(b, "name", "") == "laya" and b.available():
+                    try:
+                        b.load()
+                    except Exception as exc:  # noqa: BLE001
+                        self.ledger.record_event("judge_error", {"error": str(exc)[:200]})
+
+        threading.Thread(target=load, daemon=True, name="tokunseba-warm-judge").start()
 
     # ---------- helpers ----------
     def _adapter(self, kind: str, path: str):
@@ -123,22 +154,49 @@ class Proxy:
                         return cwd
         return self.ledger.recent_cwd(ctx.tool_id)
 
-    async def _signals(self, norm, ctx) -> dict:
-        """Ask the local judge about the newest user message.
+    # Regexes answer in microseconds. A quarter of a second is far more than they need and
+    # far less than anyone would notice, so it bounds the damage if a backend misbehaves.
+    CHEAP_JUDGE_TIMEOUT = 0.25
 
-        Measured at roughly 1.5 s per call with Laya on an M-series laptop, so this only ever
-        runs in the request path when the user has opted in via judge.inline. Otherwise it is
-        scheduled afterwards and its answers only reach the ledger.
+    def _judge_is_cheap(self) -> bool:
+        """Whether asking the judge is fast enough to do inside a request.
+
+        The rules backend is regexes, so it always is. The local model is not, which is
+        what judge.inline exists to say yes to.
+        """
+        return self.cfg.judge.inline or not self.cfg.judge.enabled
+
+    async def _signals_inline(self, norm, ctx) -> dict:
+        """Signals for a decision the request is waiting on, under a hard time budget.
+
+        The budget is enforced here rather than left to the backend, because a backend that
+        ignored its own timeout would hold the request open. Running out of time means no
+        signals, which means no routing, which means the turn goes where it was already
+        going: the request is never the thing that pays.
+        """
+        budget = self.cfg.judge.timeout if self.cfg.judge.inline else self.CHEAP_JUDGE_TIMEOUT
+        try:
+            return await asyncio.wait_for(self._signals(norm, ctx, timeout=budget), budget)
+        except Exception as exc:  # noqa: BLE001 - a judge may never break or stall a request
+            self.ledger.record_event("judge_error",
+                                     {"error": f"inline: {str(exc)[:120]}"},
+                                     ctx.session_id, ctx.request_id)
+            return {}
+
+    async def _signals(self, norm, ctx, timeout: float | None = None) -> dict:
+        """Ask the judge about the newest user message.
+
+        The question set is tokunseba's own rather than laya's, so this costs nothing and
+        imports nothing when the local model is off: the rules backend answers the same
+        questions from regexes. When the local model is on it takes roughly 1.5 s per call on
+        an M-series laptop, which is why this only runs in the request path if the user opted
+        in via judge.inline. Otherwise it is scheduled afterwards and feeds the ledger only.
         """
         text = norm.last_user_text()
         if not text:
             return {}
-        try:
-            import laya
-            questions = laya.router_questions()
-        except Exception:
-            return {}
-        answers = await self.judge.ask({"request": text[:1200]}, questions)
+        answers = await self.judge.ask({"request": text[:1200]}, router_questions(),
+                                       timeout=timeout)
         sig = {}
         for k, a in answers.items():
             if a.confidence >= self.cfg.judge.gate_threshold:
@@ -285,19 +343,28 @@ class Proxy:
                 self.ledger.record_event("cache_drift", {"region": ev.region, "cause": ev.cause},
                                          ctx.session_id, ctx.request_id)
 
-        # tier 3. Gating needs the judge's answer before the request goes out, which costs
-        # real latency, so it only happens when the user has asked for it.
+        # tier 3. Gating needs the judge's answer before the request goes out. With the
+        # local model that costs about 1.5 s, so it waits for judge.inline. With the rules
+        # backend it costs microseconds, and making people opt into latency they are not
+        # paying would mean routing never worked for anyone who had not downloaded 800 MB.
         reroute = None
-        if self.cfg.tier3 and ctx.arm == "treatment" and self.cfg.judge.inline:
-            ctx.signals = await self._signals(norm, ctx)
+        if self.cfg.tier3 and ctx.arm == "treatment" and self._judge_is_cheap():
+            ctx.signals = await self._signals_inline(norm, ctx)
             if tier3_effort.apply(norm, body, ctx.signals, self.cfg):
                 self.ledger.record_event("effort_set", {"effort": "low"},
                                          ctx.session_id, ctx.request_id)
             reroute, reason = tier3_routing.apply(norm, body, ctx.signals, self.cfg)
-            if reason in ("model_routed", "local_routed"):
-                self.ledger.record_event(reason, {"model": body.get("model")},
+            if reason in ("model_routed", "local_routed", "rule_routed"):
+                self.ledger.record_event(reason, {"model": body.get("model"),
+                                                  "upstream": reroute or ""},
                                          ctx.session_id, ctx.request_id)
-        elif self.cfg.tier3:
+            elif reason.startswith("rule-"):
+                self.ledger.record_event("route_refused", {"reason": reason},
+                                         ctx.session_id, ctx.request_id)
+        elif match.is_new and self.judge.ready_names():
+            # The judge runs by default, but only on the opening turn of a conversation, only
+            # after the response has been dispatched, and only once it is already warm. A cold
+            # model would mean loading 808 MB inside a request, so warming is a startup job.
             self._schedule(self._signals(norm, ctx))
 
         if norm.provider == "ollama":

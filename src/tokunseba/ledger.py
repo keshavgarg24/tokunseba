@@ -32,6 +32,13 @@ CREATE INDEX IF NOT EXISTS idx_events_kind ON events(kind, ts);
 CREATE INDEX IF NOT EXISTS idx_transforms_created ON transforms(created);
 """
 
+#: Size buckets for tool-result blocks: (low, high or None for unbounded, label).
+#: These are the only place the bucket edges are written down.
+SIZE_BUCKETS: tuple[tuple[int, int | None, str], ...] = (
+    (0, 100, "0-100"), (100, 500, "100-500"), (500, 2000, "500-2k"),
+    (2000, 8000, "2k-8k"), (8000, None, "8k+"),
+)
+
 
 @dataclass
 class RequestRecord:
@@ -66,6 +73,9 @@ class TransformRow:
     new_tokens: int
     handle: str
     ref_sha: str
+
+
+DIFFICULTY_NAMES = ["trivial", "easy", "moderate", "hard"]
 
 
 class Ledger:
@@ -258,7 +268,9 @@ class Ledger:
             f"""SELECT COUNT(*), COALESCE(SUM(input_tokens+cache_read+cache_write),0),
                 COALESCE(SUM(output_tokens),0), COALESCE(SUM(est_tokens_before-est_tokens_after),0),
                 COALESCE(SUM(cost_usd),0), COALESCE(SUM(counterfactual_usd-cost_usd),0),
-                COALESCE(SUM(cache_read),0), COALESCE(SUM(est_tokens_before),0)
+                COALESCE(SUM(cache_read),0), COALESCE(SUM(est_tokens_before),0),
+                COALESCE(SUM(input_tokens),0),
+                COALESCE(MAX(input_tokens+cache_read+cache_write),0)
                 FROM requests WHERE {where}""", args).fetchone()
         events = dict(self._conn.execute(
             "SELECT kind, COUNT(*) FROM events WHERE ts>=? GROUP BY kind ORDER BY 2 DESC", (since_ts,)).fetchall())
@@ -266,11 +278,16 @@ class Ledger:
             f"""SELECT tool_id, COUNT(*), COALESCE(SUM(est_tokens_before-est_tokens_after),0),
                 COALESCE(SUM(cost_usd),0) FROM requests WHERE {where} GROUP BY tool_id ORDER BY 3 DESC""",
             args).fetchall()
-        total_in, before = row[1], row[7]
+        total_in, before, requests = row[1], row[7], row[0]
         return {
-            "requests": row[0], "input_tokens": total_in, "output_tokens": row[2],
+            "requests": requests, "input_tokens": total_in, "output_tokens": row[2],
             "tokens_saved": row[3], "usd_spent": round(row[4], 4), "usd_saved": round(row[5], 4),
             "cache_read": row[6],
+            # The part of the context that was not served from cache: on a subscription this
+            # is what actually burns quota, so it is reported next to the cache hit rate.
+            "fresh_tokens": row[8],
+            "max_request_tokens": row[9],
+            "avg_context": (total_in / requests) if requests else 0.0,
             "cache_hit_rate": (row[6] / total_in) if total_in else 0.0,
             "pct_saved": (row[3] / before) if before else 0.0,
             "events": events,
@@ -305,7 +322,139 @@ class Ledger:
                 "cache_write", "output_tokens", "cost_usd")
         return [dict(zip(keys, r[:-1])) for r in rows]
 
-    def prune(self, days: int = 30) -> int:
+    # --- analysis queries -------------------------------------------------
+    # Everything below is deliberately plan-agnostic: tokens, ratios and cache behaviour are
+    # true whether you pay per token or pay a subscription. No currency is selected here.
+    def context_growth(self, session_id: str) -> list[dict]:
+        """Every request of one session in order, so context growth is visible turn by turn.
+
+        ``context_tokens`` is everything the model had to read (fresh input plus cache reads
+        plus cache writes); ``fresh_tokens`` is only the part that was not served from cache.
+        """
+        rows = self._conn.execute(
+            """SELECT ts, input_tokens, cache_read, cache_write FROM requests
+               WHERE session_id=? ORDER BY ts""", (session_id,)).fetchall()
+        return [{"turn": i, "ts": ts,
+                 "context_tokens": (inp or 0) + (cr or 0) + (cw or 0),
+                 "cache_read": cr or 0, "fresh_tokens": inp or 0}
+                for i, (ts, inp, cr, cw) in enumerate(rows, 1)]
+
+    def hourly(self, hours: int = 24) -> list[dict]:
+        """Per-hour totals over the last `hours`, oldest first. `input_tokens` is fresh input."""
+        since = time.time() - max(1, int(hours)) * 3600
+        rows = self._conn.execute(
+            """SELECT CAST(ts/3600 AS INTEGER) h, COUNT(*),
+                      COALESCE(SUM(est_tokens_before-est_tokens_after),0),
+                      COALESCE(SUM(input_tokens),0), COALESCE(SUM(cache_read),0)
+               FROM requests WHERE ts>=? GROUP BY h ORDER BY h""", (since,)).fetchall()
+        return [{"hour": int(h * 3600), "requests": n, "tokens_saved": s,
+                 "input_tokens": i, "cache_read": c} for h, n, s, i, c in rows]
+
+    def tool_result_histogram(self, since_ts: float) -> list[dict]:
+        """Tool-result blocks bucketed by size, split by whether they were compressed.
+
+        This is the map of where the compressible mass is: a thousand tiny blocks are not
+        worth a transform, one 8k block is.
+        """
+        rows = self._conn.execute(
+            """SELECT CASE WHEN orig_tokens<100 THEN 0 WHEN orig_tokens<500 THEN 1
+                           WHEN orig_tokens<2000 THEN 2 WHEN orig_tokens<8000 THEN 3
+                           ELSE 4 END AS b,
+                      CASE WHEN kind='passthrough' THEN 1 ELSE 0 END AS pt,
+                      COUNT(*), COALESCE(SUM(orig_tokens),0)
+               FROM transforms WHERE created>=? GROUP BY b, pt ORDER BY b""",
+            (since_ts,)).fetchall()
+        out: dict[int, dict] = {}
+        for b, pt, n, tokens in rows:
+            lo, hi, label = SIZE_BUCKETS[int(b)]
+            e = out.setdefault(int(b), {
+                "bucket": label, "lo": lo, "hi": hi, "count": 0, "tokens": 0,
+                "compressed_count": 0, "compressed_tokens": 0,
+                "passthrough_count": 0, "passthrough_tokens": 0})
+            side = "passthrough" if pt else "compressed"
+            e["count"] += n
+            e["tokens"] += tokens
+            e[f"{side}_count"] += n
+            e[f"{side}_tokens"] += tokens
+        return [out[b] for b in sorted(out)]
+
+    def model_breakdown(self, since_ts: float) -> list[dict]:
+        """Per model: how much context it read, how much of that came from cache."""
+        rows = self._conn.execute(
+            """SELECT model, COUNT(*), COALESCE(SUM(input_tokens+cache_read+cache_write),0),
+                      COALESCE(SUM(cache_read),0), COALESCE(SUM(input_tokens),0),
+                      COALESCE(SUM(est_tokens_before-est_tokens_after),0)
+               FROM requests WHERE ts>=? GROUP BY model ORDER BY 3 DESC""",
+            (since_ts,)).fetchall()
+        return [{"model": m or "-", "requests": n, "input_tokens": inp, "cache_read": cr,
+                 "fresh_tokens": fresh, "tokens_saved": saved}
+                for m, n, inp, cr, fresh, saved in rows]
+
+    def models_seen(self, since_ts: float) -> list[dict]:
+        """Every model actually used in this window, and through which upstream.
+
+        This is the honest answer to "what am I running", as opposed to what the config
+        says is available: it comes from the requests that were really made.
+        """
+        rows = self._conn.execute(
+            """SELECT COALESCE(provider,''), COALESCE(model,''), COUNT(*), MAX(ts),
+                      COALESCE(SUM(input_tokens+cache_read+cache_write),0)
+               FROM requests WHERE ts>=? GROUP BY provider, model
+               ORDER BY 3 DESC""", (since_ts,)).fetchall()
+        return [{"provider": prov or "-", "model": model or "-", "requests": n,
+                 "last_seen": last or 0.0, "input_tokens": toks}
+                for prov, model, n, last, toks in rows]
+
+    def signal_breakdown(self, since_ts: float) -> dict:
+        """What the judge made of the opening prompts in this window.
+
+        Aggregated in Python rather than SQL because the interesting part is the split
+        between a confident answer and a discarded one, and that lives inside the payload.
+        One row per conversation, so this stays small even over a long window.
+        """
+        rows = self._conn.execute(
+            "SELECT payload FROM events WHERE kind='route_signal' AND ts>=?",
+            (since_ts,)).fetchall()
+        domains: dict[str, int] = {}
+        levels: dict[str, int] = {}
+        needs_tools = sensitive = 0
+        confident = 0
+        for (raw,) in rows:
+            try:
+                p = json.loads(raw or "{}")
+            except ValueError:
+                continue
+            domain = p.get("domain")
+            domains[domain or "unsure"] = domains.get(domain or "unsure", 0) + 1
+            level = p.get("difficulty")
+            if level is None:
+                levels["unsure"] = levels.get("unsure", 0) + 1
+            else:
+                name = DIFFICULTY_NAMES[min(int(float(level)), len(DIFFICULTY_NAMES) - 1)]
+                levels[name] = levels.get(name, 0) + 1
+                confident += 1
+            if float(p.get("needs_tools") or 0) >= 0.5:
+                needs_tools += 1
+            if float(p.get("is_sensitive") or 0) >= 0.5:
+                sensitive += 1
+        return {"judged": len(rows), "confident": confident, "domains": domains,
+                "levels": levels, "needs_tools": needs_tools, "sensitive": sensitive}
+
+    def summary_counts(self, since_ts: float) -> dict:
+        """The shape of the window: how much of everything it contains."""
+        sessions, requests, models, projects = self._conn.execute(
+            """SELECT COUNT(DISTINCT session_id), COUNT(*), COUNT(DISTINCT model),
+                      COUNT(DISTINCT project) FROM requests WHERE ts>=?""",
+            (since_ts,)).fetchone()
+        transforms, handles = self._conn.execute(
+            """SELECT COUNT(*), COALESCE(SUM(CASE WHEN handle<>'' THEN 1 ELSE 0 END),0)
+               FROM transforms WHERE created>=?""", (since_ts,)).fetchone()
+        return {"sessions": sessions, "requests": requests, "models": models,
+                "projects": projects, "transforms": transforms, "handles": handles}
+
+    def prune(self, days: int = 30, body_days: int | None = None) -> int:
+        """Drop history older than `days`. Request bodies can expire sooner: they are the
+        bulkiest thing stored and only `explain` needs them."""
         cutoff = time.time() - days * 86400
         with self._lock:
             cur = self._conn.execute("DELETE FROM requests WHERE ts<?", (cutoff,))

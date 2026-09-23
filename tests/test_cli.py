@@ -104,7 +104,31 @@ def test_explain_shows_transforms(home):
 
 def test_prune_reports_counts(home):
     _seed(home)
-    assert "request rows" in run(["prune", "--days", "0"]).output
+    assert "request rows" in run(["prune", "--days", "1"]).output
+
+
+def test_prune_zero_days_keeps_everything(home):
+    """0 means keep forever, so it must never be a way to wipe the ledger."""
+    _seed(home)
+    out = run(["prune", "--days", "0"]).output
+    assert "nothing to prune" in " ".join(out.split())
+    assert Ledger(home / "ledger.sqlite").stats(0)["requests"] == 1
+
+
+def test_prune_uses_the_configured_window(home):
+    import time
+    cfg = config.load()
+    cfg.retention.days = 1
+    config.save(cfg)
+    led = _seed(home)
+    led.record_request(RequestRecord(
+        id="old", ts=time.time() - 10 * 86400, session_id="s9", tool_id="claude-code",
+        project="/p", provider="anthropic", model="m", stream=False, input_tokens=1,
+        cache_read=0, cache_write=0, output_tokens=1, est_tokens_before=1,
+        est_tokens_after=1, cost_usd=0.0, counterfactual_usd=0.0, arm="", status=200,
+        latency_ms=1, body_path=""))
+    assert run(["prune"]).exit_code == 0
+    assert Ledger(home / "ledger.sqlite").stats(0)["requests"] == 1
 
 
 def test_statusline_offline_is_graceful(dead_port):

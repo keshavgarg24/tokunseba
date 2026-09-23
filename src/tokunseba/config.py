@@ -34,10 +34,26 @@ class Tier3Config:
     annotate_injections: bool = False
     model_map: dict[str, str] = field(default_factory=dict)
     local_model: str = ""
+    # Prompt-driven routing. Each entry states conditions on the judge's signals and a
+    # target, and the first one that matches wins. Kept as plain dicts so the file stays
+    # readable and a hand-edited rule survives a round trip.
+    #   [[tier3.rules]]
+    #   domain = "chitchat"      # "" matches any
+    #   max_difficulty = 1.0     # -1 matches any
+    #   needs_tools = false      # omit to match any
+    #   upstream = "ollama"      # "" keeps the upstream the request arrived for
+    #   model = "llama3.1"       # "" keeps the model the client asked for
+    rules: list[dict] = field(default_factory=list)
 
 
 @dataclass
 class JudgeConfig:
+    # The local judge is an opt-in extra. Its weights are an ~800 MB download and the loaded
+    # model holds roughly 2.2 GB of RAM for as long as the proxy runs, which is real weight on
+    # a small laptop. Nothing in tiers 0-2 needs it, so it stays off until asked for by name
+    # with `tokunseba judge enable`, and `tokunseba judge disable` gives the memory back.
+    # While this is False the laya backend is never constructed, so torch is never imported.
+    enabled: bool = False
     backends: list[str] = field(default_factory=lambda: ["rules", "laya"])
     laya_model: str = "convaiinnovations/laya"
     laya_device: str = "auto"
@@ -47,6 +63,9 @@ class JudgeConfig:
     # runs after the response has been dispatched and only feeds the ledger. Turn this on to
     # let it gate tier 3 decisions, at the cost of that latency on the first turn.
     inline: bool = False
+    # Pay the load cost at startup instead of inside somebody's first request. Only ever acts
+    # when the judge is enabled and the weights are already on disk; it never downloads.
+    warm: bool = False
 
 
 @dataclass
@@ -55,6 +74,14 @@ class Thresholds:
     truncate_tokens: int = 6000
     cache_min_tokens: int = 1024
     local_truncate_tokens: int = 1500
+
+
+@dataclass
+class Retention:
+    """How long to keep history. Reports can only reach as far back as this allows."""
+    days: int = 90          # 0 keeps everything forever
+    auto_prune: bool = True  # prune once a day when the proxy starts
+    keep_bodies_days: int = 14  # request bodies are the bulkiest part; expire them sooner
 
 
 @dataclass
@@ -89,6 +116,7 @@ class Config:
     judge: JudgeConfig = field(default_factory=JudgeConfig)
     thresholds: Thresholds = field(default_factory=Thresholds)
     budget: Budget = field(default_factory=Budget)
+    retention: Retention = field(default_factory=Retention)
     failover: Failover = field(default_factory=Failover)
     upstreams: dict[str, Upstream] = field(default_factory=lambda: dict(DEFAULT_UPSTREAMS))
     pricing_overrides: dict[str, dict[str, float]] = field(default_factory=dict)
@@ -124,6 +152,7 @@ def load(path: Path | None = None) -> Config:
     cfg.judge = JudgeConfig(**_only_known(JudgeConfig, raw.get("judge", {})))
     cfg.thresholds = Thresholds(**_only_known(Thresholds, raw.get("thresholds", {})))
     cfg.budget = Budget(**_only_known(Budget, raw.get("budget", {})))
+    cfg.retention = Retention(**_only_known(Retention, raw.get("retention", {})))
     fo = raw.get("failover", {})
     cfg.failover = Failover(enabled=bool(fo.get("enabled", False)), routes=fo.get("routes", {}) or {})
     for name, u in (raw.get("upstreams", {}) or {}).items():
@@ -150,6 +179,7 @@ def save(cfg: Config, path: Path | None = None) -> Path:
         "judge": asdict(cfg.judge),
         "thresholds": asdict(cfg.thresholds),
         "budget": asdict(cfg.budget),
+        "retention": asdict(cfg.retention),
         "failover": asdict(cfg.failover),
         "upstreams": {k: asdict(v) for k, v in cfg.upstreams.items()},
         "pricing": cfg.pricing_overrides,

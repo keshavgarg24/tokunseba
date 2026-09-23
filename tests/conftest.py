@@ -16,6 +16,16 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+@pytest.fixture(autouse=True)
+def _no_model_loading(monkeypatch):
+    """Never load the 808 MB judge during tests.
+
+    The proxy warms it in a background thread at startup, which is right in production and
+    ruinous in a test suite: loading torch starves every other test of CPU.
+    """
+    monkeypatch.setenv("TOKUNSEBA_NO_WARM", "1")
+
+
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     monkeypatch.setenv("TOKUNSEBA_HOME", str(tmp_path))

@@ -75,7 +75,7 @@ def test_rules_judge_abstains_on_noise():
 
 
 def test_rules_judge_ignores_unknown_questions():
-    assert RulesJudge().ask("x", {"difficulty": {}}) == {}
+    assert RulesJudge().ask("x", {"sentiment": {}, "is_haiku": {}}) == {}
 
 
 def test_laya_state_truncation():

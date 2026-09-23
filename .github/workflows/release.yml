@@ -1,0 +1,80 @@
+name: Release
+
+# Publishes to PyPI when a version tag is pushed. Uses Trusted Publishing, so there is no
+# API token in the repository secrets: PyPI is configured to trust this workflow in this
+# repository, and the job exchanges a short-lived OIDC token for upload rights.
+#
+# One-time setup on PyPI, under the project's Publishing settings:
+#   owner: keshavgarg24   repository: tokunseba   workflow: release.yml   environment: pypi
+#
+# To cut a release:
+#   1. bump version in pyproject.toml
+#   2. move the Unreleased section of CHANGELOG.md under the new version
+#   3. git tag v0.1.0 && git push origin v0.1.0
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test before publishing
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --group dev
+        env:
+          UV_PYTHON: ${{ matrix.python-version }}
+      - run: uv run pytest -q
+        env:
+          UV_PYTHON: ${{ matrix.python-version }}
+
+  build:
+    name: build distributions
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Check the tag matches the version in pyproject
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(uv run --with tomli python -c \
+            "import tomllib,pathlib;print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          if [ "$tag" != "$version" ]; then
+            echo "tag $tag does not match pyproject version $version" >&2
+            exit 1
+          fi
+
+      - run: uv build
+
+      - name: Check the metadata PyPI will render
+        run: uv run --with twine twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

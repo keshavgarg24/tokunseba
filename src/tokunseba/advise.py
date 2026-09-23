@@ -60,6 +60,7 @@ class Advice:
     confident: int = 0
     by_level: dict[str, list[Turn]] = field(default_factory=dict)
     by_domain: dict[str, int] = field(default_factory=dict)
+    backend: str = ""
     note: str = ""
 
     @property
@@ -144,20 +145,23 @@ def collect_turns(ledger, bodies_dir: Path, since_ts: float, limit: int = 200) -
 
 
 def judge_turns(turns: list[Turn], judge_chain, threshold: float) -> Advice:
-    """Ask the local judge to rate each opening prompt. Answers below the gate are discarded."""
-    adv = Advice(turns=turns)
-    try:
-        import laya
-        questions = laya.router_questions()
-    except ImportError:
-        adv.note = "laya is not installed; install with: uv tool install 'tokunseba[laya]'"
-        return adv
+    """Rate each opening prompt with the best backend available.
 
-    backend = next((b for b in judge_chain.backends
-                    if getattr(b, "name", "") == "laya" and b.available()), None)
+    This used to require the local model, which made the whole command unusable for anyone
+    who had not downloaded 800 MB. The rules backend answers the same questions from
+    regexes, so the advice is always available; it is simply less certain, and since every
+    conclusion here is gated on confidence, less certain means fewer claims rather than
+    worse ones.
+    """
+    from .judge import router_questions
+    adv = Advice(turns=turns)
+    questions = router_questions()
+
+    backend = next((b for b in judge_chain.backends if b.available()), None)
     if backend is None:
-        adv.note = "the laya backend is not available"
+        adv.note = "no judge backend is available"
         return adv
+    adv.backend = getattr(backend, "name", "")
 
     for t in turns:
         try:

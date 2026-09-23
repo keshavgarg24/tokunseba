@@ -49,6 +49,11 @@ class JudgeChain:
     def available_names(self) -> list[str]:
         return [b.name for b in self.backends if b.available()]
 
+    def ready_names(self) -> list[str]:
+        """Backends that can answer immediately. A cold model is not one of them."""
+        return [b.name for b in self.backends
+                if b.available() and getattr(b, "ready", lambda: True)()]
+
     async def ask(self, state, questions: dict, timeout: float | None = None) -> dict[str, Answer]:
         out: dict[str, Answer] = {}
         remaining = dict(questions)

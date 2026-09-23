@@ -17,9 +17,15 @@ async def test_proxy_overhead_is_small(client, proxy_app):
     assert per_request_ms < 60, f"{per_request_ms:.1f}ms per request is too slow"
 
 
-async def test_judge_is_never_called_inline_by_default(client, proxy_app, monkeypatch):
+async def test_the_local_model_is_never_called_inline_by_default(client, proxy_app,
+                                                                 monkeypatch):
+    """Regexes may run in the request path because they cost microseconds. The 2.2 GB model
+    costs about 1.5 s, so it stays out of it until judge.inline says otherwise."""
     app, cfg, _led, _up = proxy_app
     cfg.tier3 = True
+    cfg.judge.enabled = True
+    cfg.judge.inline = False
+    monkeypatch.setattr("random.choice", lambda seq: "treatment")
     calls = []
 
     async def spy(state, questions, timeout=None):
@@ -27,10 +33,11 @@ async def test_judge_is_never_called_inline_by_default(client, proxy_app, monkey
         return {}
     monkeypatch.setattr(app.state.proxy.judge, "ask", spy)
     await client.post("/anthropic/v1/messages", json=_msg(), headers={"x-api-key": "k"})
-    assert calls == [], "the judge must not block the request path by default"
+    assert calls == [], "the model must not block the request path by default"
 
 
 async def test_a_slow_judge_cannot_delay_a_request(client, proxy_app, monkeypatch):
+    """Whichever path it is on, and however badly a backend behaves."""
     app, cfg, _led, _up = proxy_app
     cfg.tier3 = True
 
@@ -39,10 +46,15 @@ async def test_a_slow_judge_cannot_delay_a_request(client, proxy_app, monkeypatc
         await asyncio.sleep(3)
         return {}
     monkeypatch.setattr(app.state.proxy.judge, "ask", slow)
-    t0 = time.monotonic()
-    r = await client.post("/anthropic/v1/messages", json=_msg(), headers={"x-api-key": "k"})
-    assert r.status_code == 200
-    assert (time.monotonic() - t0) < 1.0
+    # the A/B arm is drawn at random per session, and only the treatment arm reaches the
+    # judge at all, so pin it or the test passes half the time for the wrong reason
+    monkeypatch.setattr("random.choice", lambda seq: "treatment")
+    for enabled in (False, True):
+        cfg.judge.enabled = enabled
+        t0 = time.monotonic()
+        r = await client.post("/anthropic/v1/messages", json=_msg(), headers={"x-api-key": "k"})
+        assert r.status_code == 200
+        assert (time.monotonic() - t0) < 1.0, f"judge.enabled={enabled}"
 
 
 async def test_large_tool_output_stays_fast(client, proxy_app):

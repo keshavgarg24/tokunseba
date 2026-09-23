@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+from pathlib import Path
 
 import click
 from rich.console import Console
@@ -11,7 +12,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from . import __version__, config
-from .ledger import Ledger
+from .ledger import DIFFICULTY_NAMES, Ledger
 
 console = Console()
 err = Console(stderr=True)
@@ -143,10 +144,15 @@ def start(foreground: bool, warm_judge: bool) -> None:
         console.print(f"Started via {path} ({state})")
         return
     app = build_app(cfg, _ledger())
-    if warm_judge:
+    if warm_judge and not cfg.judge.enabled:
+        err.print("[yellow]--warm-judge ignored: the local judge is disabled.[/yellow] "
+                  "Turn it on with: tokunseba judge enable")
+    elif warm_judge:
+        from .judge.laya_judge import RESIDENT_MB
         for b in app.state.proxy.judge.backends:
             if getattr(b, "name", "") == "laya" and b.available():
-                console.print("Loading the local judge model, first run downloads it...")
+                console.print(f"Loading the local judge (about {RESIDENT_MB} MB of RAM), "
+                              "first run downloads it...")
                 try:
                     b.load()
                     console.print("[green]judge ready[/green]")
@@ -164,6 +170,15 @@ def stop() -> None:
 
 
 @main.command()
+def restart() -> None:
+    """Stop the background proxy and start it again, so config changes take effect."""
+    from . import service
+    console.print(service.stop())
+    path, state = service.install(config.load().port)
+    console.print(f"Started via {escape(str(path))} ({escape(state)})")
+
+
+@main.command()
 def status() -> None:
     """Show whether the proxy is running and what it saved today."""
     from .service import running
@@ -174,9 +189,11 @@ def status() -> None:
     console.print(f"proxy: {'[green]running[/green]' if up else '[red]not running[/red]'} "
                   f"on 127.0.0.1:{cfg.port}")
     s = _ledger().stats(time.time() - 86400)
-    console.print(f"today: {s['requests']} requests, {_k(s['tokens_saved'])} tokens saved, "
-                  f"${s['usd_saved']:.2f} saved, ${s['usd_spent']:.2f} spent, "
-                  f"cache hit {s['cache_hit_rate'] * 100:.0f}%")
+    console.print(f"today: {s['requests']} requests · {_k(s['tokens_saved'])} tokens saved "
+                  f"({s['pct_saved'] * 100:.0f}% of tool output) · "
+                  f"cache {s['cache_hit_rate'] * 100:.0f}% · "
+                  f"{_k(s['fresh_tokens'])} fresh tokens (the part cache did not cover)")
+    console.print(f"next: {_next_action(up, s)}")
 
 
 @main.command()
@@ -206,16 +223,42 @@ def uninstall() -> None:
     console.print(f"Data left in place at {config.home()} — delete it by hand if you want it gone.")
 
 
+#: The one sentence that has to appear next to every currency figure tokunseba prints.
+MONEY_HELP = ("Also show dollar figures. Only meaningful on pay-per-token API access, "
+              "not on a subscription.")
+
+
+def _next_action(up: bool, s: dict) -> str:
+    """The single most useful thing to do next, chosen from what the ledger just showed."""
+    events = s.get("events") or {}
+    if not up:
+        return "start the proxy:  tokunseba start"
+    if not s.get("requests"):
+        return "use a coding tool once, then:  tokunseba verify"
+    if events.get("cache_drift") or events.get("cache_miss_unexplained"):
+        return "a cached prefix changed and was re-read in full:  tokunseba ui"
+    if s.get("cache_hit_rate", 0.0) < 0.5:
+        return "under half the context came from cache:  tokunseba report --since 24h"
+    if not s.get("tokens_saved"):
+        return "nothing has been rewritten yet:  tokunseba top"
+    return "see the whole window:  tokunseba report"
+
+
+def _routing_problem() -> str:
+    """The one sentence that explains an empty report, or "" when tokunseba is in the path."""
+    from .health import check
+    try:
+        return check(config.load(), _ledger()).problem or ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _routing_warning() -> None:
     """Print the one sentence that explains an empty report, before the empty report."""
-    from .health import check
     from .ui.terminal import style
-    try:
-        r = check(config.load(), _ledger())
-    except Exception:  # noqa: BLE001
-        return
-    if r.problem:
-        console.print(f"[{style('bad')}]not in the path[/]  {escape(r.problem)}\n")
+    problem = _routing_problem()
+    if problem:
+        console.print(f"[{style('bad')}]not in the path[/]  {escape(problem)}\n")
 
 
 # --------------------------------------------------------------------------- reporting
@@ -223,47 +266,34 @@ def _routing_warning() -> None:
 @click.option("--since", default="7d", help="e.g. 24h, 7d, 30d")
 @click.option("--project", default=None, help="Filter to one project directory.")
 @click.option("--ab", is_flag=True, help="Compare the tier 3 control and treatment arms.")
+@click.option("--money", is_flag=True, help=MONEY_HELP)
 @click.option("--json", "as_json", is_flag=True)
-def stats(since: str, project: str | None, ab: bool, as_json: bool) -> None:
-    """Show what tokunseba saved."""
+def stats(since: str, project: str | None, ab: bool, money: bool, as_json: bool) -> None:
+    """Show what tokunseba saved.
+
+    Everything shown is counted in tokens, because tokens are true whether you pay per
+    token or pay a flat subscription. `--money` adds the dollar figures, which are only
+    meaningful on pay-per-token API access.
+    """
+    from .ui.terminal import by_tool_table, signal_table, stat_tiles, style
     led = _ledger()
     if not as_json:
         _routing_warning()
     s = led.stats(_since(since), project)
-    if as_json:
+    if as_json:  # the cost columns stay in the data; only the rendering drops them
         console.print_json(json.dumps(s))
         return
+    dim = style("dim")
     console.print(_banner(f"stats · last {since}"))
-    head = Table(header_style="dim", box=None)
-    head.add_column("metric")
-    head.add_column("value", justify="right")
-    head.add_row("requests", str(s["requests"]))
-    head.add_row("input tokens", _k(s["input_tokens"]))
-    head.add_row("output tokens", _k(s["output_tokens"]))
-    head.add_row("tokens saved", f"{_k(s['tokens_saved'])}  ({s['pct_saved'] * 100:.0f}% of tool output)")
-    head.add_row("cache hit rate", f"{s['cache_hit_rate'] * 100:.0f}%")
-    head.add_row("spent", f"${s['usd_spent']:.2f}")
-    head.add_row("saved", f"[green]${s['usd_saved']:.2f}[/green]")
-    console.print(head)
+    console.print(stat_tiles(s, money=money))
 
     if s["by_tool"]:
-        t = Table(title="by tool", title_justify="left", header_style="dim", box=None)
-        t.add_column("tool")
-        t.add_column("requests", justify="right")
-        t.add_column("saved", justify="right")
-        t.add_column("spent", justify="right")
-        for r in s["by_tool"]:
-            t.add_row(escape(r["tool"]), str(r["requests"]), _k(r["tokens_saved"]),
-                      f"${r['usd']:.2f}")
-        console.print(t)
+        console.print(f"\n[{dim}]by tool[/]")
+        console.print(by_tool_table(s["by_tool"]))
 
     if s["events"]:
-        e = Table(title="signals", title_justify="left", header_style="dim", box=None)
-        e.add_column("signal")
-        e.add_column("count", justify="right")
-        for kind, count in s["events"].items():
-            e.add_row(escape(kind), str(count))
-        console.print(e)
+        console.print(f"\n[{dim}]signals[/]")
+        console.print(signal_table(s["events"]))
 
     if ab:
         arms = led.stats_ab(_since(since))
@@ -272,12 +302,18 @@ def stats(since: str, project: str | None, ab: bool, as_json: bool) -> None:
         else:
             a = Table(title="tier 3 arms", title_justify="left", header_style="dim", box=None)
             a.add_column("arm")
-            for col in ("sessions", "requests/session", "input/session", "output/session", "$/session"):
+            cols = ["sessions", "requests/session", "input/session", "output/session"]
+            if money:
+                cols.append("$/session")
+            for col in cols:
                 a.add_column(col, justify="right")
             for name, v in arms.items():
-                a.add_row(name, str(v["sessions"]), str(v["requests_per_session"]),
-                          _k(int(v["input_tokens_per_session"])), _k(int(v["output_tokens_per_session"])),
-                          f"${v['usd_per_session']:.4f}")
+                row = [escape(name), str(v["sessions"]), str(v["requests_per_session"]),
+                       _k(int(v["input_tokens_per_session"])),
+                       _k(int(v["output_tokens_per_session"]))]
+                if money:
+                    row.append(f"${v['usd_per_session']:.4f}")
+                a.add_row(*row)
             console.print(a)
 
 
@@ -333,22 +369,24 @@ def expand(handle: str) -> None:
 
 
 @main.command()
-@click.option("--days", default=30, show_default=True)
-def prune(days: int) -> None:
-    """Delete stored request bodies, blobs and ledger rows older than N days."""
-    led = _ledger()
-    rows = led.prune(days)
-    from .transform.handles import HandleStore
-    blobs = HandleStore(config.home() / "blobs").prune(led.live_handles())
-    cutoff = time.time() - days * 86400
-    bodies = 0
-    bdir = config.home() / "bodies"
-    if bdir.exists():
-        for f in bdir.iterdir():
-            if f.stat().st_mtime < cutoff:
-                f.unlink(missing_ok=True)
-                bodies += 1
-    console.print(f"removed {rows} request rows, {blobs} blobs, {bodies} stored bodies")
+@click.option("--days", default=None, type=int,
+              help="Override the configured retention window for this run.")
+def prune(days: int | None) -> None:
+    """Delete history older than the retention window.
+
+    The window itself lives in the config; see and change it with `tokunseba retention`.
+    """
+    from .retention import run as run_prune
+    cfg = config.load()
+    if days is not None:
+        cfg.retention.days = days
+    if cfg.retention.days <= 0:
+        console.print("[dim]The window is 'forever', so there is nothing to prune. "
+                      "Set one with: tokunseba retention keep 90d[/dim]")
+        return
+    out = run_prune(cfg, _ledger(), config.home())
+    console.print(f"removed {out['rows']} request rows, {out['blobs']} blobs, "
+                  f"{out['bodies']} stored bodies")
 
 
 # --------------------------------------------------------------------------- dashboard
@@ -437,7 +475,7 @@ def verify() -> None:
     """Prove tokunseba is in the path and saving tokens, with evidence rather than claims."""
     from .detect import registry
     from .service import running
-    from .ui.terminal import check_table, k, pct, style
+    from .ui.terminal import check_table, k, pct, style, transform_kind_table
     cfg = config.load()
     led = _ledger()
     since = time.time() - 86400
@@ -476,17 +514,8 @@ def verify() -> None:
     console.print(check_table([(n, ok, detail) for n, ok, detail, _ in checks]))
 
     if summary:
-        t = Table(title="transforms by kind", title_justify="left",
-                  header_style="dim", box=None)
-        t.add_column("kind", overflow="fold")
-        t.add_column("count", justify="right")
-        t.add_column("before", justify="right")
-        t.add_column("after", justify="right")
-        t.add_column("saved", justify="right")
-        for r in summary:
-            t.add_row(escape(str(r["kind"])), str(r["count"]), _k(r["tokens_before"]),
-                      _k(r["tokens_after"]), _k(r["saved"]))
-        console.print(t)
+        console.print(f"\n[{style('dim')}]transforms by kind[/]")
+        console.print(transform_kind_table(summary))
 
     failed = [name for name, ok, _d, essential in checks if essential and not ok]
     advisory = [name for name, ok, _d, essential in checks if not essential and not ok]
@@ -507,13 +536,15 @@ def verify() -> None:
 @click.option("--limit", default=15, show_default=True, help="Rows per table.")
 def top(since: str, limit: int) -> None:
     """Show where the tokens went: the biggest savings, and what could not be helped."""
-    from .ui.terminal import passthrough_table, style, transform_table
+    from .ui.terminal import histogram, passthrough_table, style, transform_table
     led = _ledger()
     ts = _since(since)
     wins = led.top_transforms(ts, limit)
     misses = led.biggest_passthroughs(ts, limit)
     console.print(_banner(f"top · last {since}"))
     _routing_warning()
+    console.print(f"\n[{style('dim')}]tool results by size — where the compressible mass is[/]")
+    console.print(histogram(led.tool_result_histogram(ts)))
     console.print(f"\n[{style('dim')}]biggest savings[/]")
     console.print(transform_table(wins))
     console.print(f"\n[{style('dim')}]biggest untouched blocks — "
@@ -522,6 +553,174 @@ def top(since: str, limit: int) -> None:
     if wins:
         console.print(f"\n[dim]See one request in full with: "
                       f"tokunseba explain {escape(str(wins[0]['request_id']))}[/dim]")
+
+
+# --------------------------------------------------------------------------- report
+def _report_data(led: Ledger, since: str, project: str | None = None) -> dict:
+    """Every number the report shows, fetched once so the text and the JSON cannot disagree.
+
+    `project` filters the request-side figures. Tool results are stored per block and carry
+    no project, so the size, transform and passthrough views are always machine wide.
+    """
+    ts = _since(since)
+    sessions = led.recent_sessions(10)
+    return {
+        "window": {"since": since, "since_ts": ts, "project": project or ""},
+        "summary": led.summary_counts(ts),
+        "stats": led.stats(ts, project),
+        "daily": led.daily(14),
+        "hourly": led.hourly(24),
+        "sizes": led.tool_result_histogram(ts),
+        "transforms": led.transform_summary(ts),
+        "by_model": led.model_breakdown(ts),
+        "top_transforms": led.top_transforms(ts, 10),
+        "passthroughs": led.biggest_passthroughs(ts, 10),
+        "signals": led.signal_breakdown(ts),
+        "sessions": sessions,
+        "context_growth": led.context_growth(sessions[0]["id"]) if sessions else [],
+    }
+
+
+def _mix_note(mix: dict) -> str:
+    """One line under the prompt mix, saying what it means for routing.
+
+    The point of showing the mix at all is the decision it supports, so this names the
+    easy share and the command that would act on it rather than leaving the reader to
+    work out that a bar chart of difficulties is a routing proposal.
+    """
+    judged = int(mix.get("judged") or 0)
+    if not judged:
+        return ("Nothing judged in this window. The judge reads the opening prompt of each "
+                "conversation; it needs no model and no key.")
+    levels = mix.get("levels") or {}
+    easy = int(levels.get("trivial") or 0) + int(levels.get("easy") or 0)
+    unsure = int(levels.get("unsure") or 0)
+    parts = [f"{judged} conversations judged", f"{judged - unsure} read confidently"]
+    if mix.get("needs_tools"):
+        parts.append(f"{mix['needs_tools']} reached for a file, a repo or the web")
+    if mix.get("sensitive"):
+        parts.append(f"{mix['sensitive']} looked sensitive")
+    tail = ("" if not easy else
+            f" {easy} opened trivially or easily; a rule could send those to a cheaper "
+            f"model: tokunseba route add --max-difficulty 1 --model MODEL")
+    return " · ".join(parts) + ("." + tail if tail else ".")
+
+
+def _report_group(data: dict, money: bool = False, problem: str = ""):
+    """The whole report as one renderable, so the terminal and the saved file agree.
+
+    Every section renders on an empty ledger: the tables say so in words rather than
+    disappearing, because a blank page does not tell you whether anything is wrong.
+    """
+    from rich.console import Group
+
+    from .ui.terminal import (
+        by_tool_table,
+        context_curve,
+        histogram,
+        k,
+        kv_panel,
+        mix_table,
+        model_table,
+        passthrough_table,
+        sessions_table,
+        signal_table,
+        sparkline,
+        stat_tiles,
+        style,
+        transform_kind_table,
+        transform_table,
+    )
+    s, counts, window = data["stats"], data["summary"], data["window"]
+    dim, accent = style("dim"), style("accent")
+    hours, curve = data["hourly"], data["context_growth"]
+    mix = data.get("signals") or {"domains": {}, "levels": {}}
+
+    def label(text: str) -> str:
+        return f"\n[{dim}]{escape(text)}[/]"
+
+    def line(text: str) -> str:
+        return f"[{accent}]{text}[/]"
+
+    pairs = [
+        ("window", f"last {window['since']}"),
+        ("project", window["project"] or "every project on this machine"),
+        ("sessions", f"{counts['sessions']} across {counts['projects']} projects"),
+        ("requests", f"{counts['requests']} on {counts['models']} models"),
+        ("tool results", f"{counts['transforms']} seen, {counts['handles']} kept behind handles"),
+        ("counted in", "tokens and dollars" if money else
+         "tokens — dollars only mean something on pay-per-token access (--money)"),
+    ]
+    fresh = sum(int(h.get("input_tokens") or 0) for h in hours)
+    cached = sum(int(h.get("cache_read") or 0) for h in hours)
+    requests = sum(int(h.get("requests") or 0) for h in hours)
+
+    return Group(
+        _banner(f"report · last {window['since']}"),
+        (f"[{style('bad')}]not in the path[/]  {escape(problem)}" if problem else ""),
+        "",
+        kv_panel("window", pairs),
+        "",
+        stat_tiles(s, money=money),
+        label("tokens saved per day, last 14 days"),
+        line(sparkline(data["daily"])),
+        label("tokens saved per hour, last 24 hours"),
+        line(sparkline(hours)),
+        f"[{dim}]{requests} requests · {k(fresh)} fresh · {k(cached)} from cache[/]",
+        label("tool results by size — where the compressible mass is"),
+        histogram(data["sizes"]),
+        label("transforms by kind"),
+        transform_kind_table(data["transforms"]),
+        label("by tool"),
+        by_tool_table(s["by_tool"]),
+        label("by model"),
+        model_table(data["by_model"]),
+        label("biggest savings"),
+        transform_table(data["top_transforms"]),
+        label("biggest untouched blocks — what tokunseba could not help with"),
+        passthrough_table(data["passthroughs"]),
+        label("signals"),
+        signal_table(s["events"]),
+        label("what you asked about — the opening prompt of each conversation"),
+        mix_table(mix["domains"], "domain"),
+        label("how hard those prompts were"),
+        mix_table(mix["levels"], "difficulty", order=list(DIFFICULTY_NAMES)),
+        f"[{dim}]{escape(_mix_note(mix))}[/]",
+        label("recent sessions"),
+        sessions_table(data["sessions"]),
+        label(f"context growth in the newest session, {len(curve)} turns"),
+        line(context_curve(curve)),
+    )
+
+
+@main.command()
+@click.option("--since", default="7d", show_default=True, help="e.g. 24h, 7d, 30d")
+@click.option("--project", default=None,
+              help="Filter the request figures to one project directory.")
+@click.option("--money", is_flag=True, help=MONEY_HELP)
+@click.option("--json", "as_json", is_flag=True, help="Print the same numbers as JSON.")
+@click.option("--save", "save_path", type=click.Path(dir_okay=False, writable=True),
+              default=None, help="Also write the plain text rendering to PATH.")
+def report(since: str, project: str | None, money: bool, as_json: bool,
+           save_path: str | None) -> None:
+    """The whole picture in one page: context, cache, and where the tokens went.
+
+    Counted in tokens, because tokens are what a subscription and an API key have in
+    common. `--money` adds the dollar figures for pay-per-token access.
+    """
+    led = _ledger()
+    data = _report_data(led, since, project)
+    if as_json:
+        console.print_json(json.dumps(data, default=str))
+        return
+    group = _report_group(data, money=money, problem=_routing_problem())
+    console.print(group)
+    if save_path:
+        out = Path(save_path)
+        with out.open("w", encoding="utf-8") as fh:
+            Console(file=fh, width=100, no_color=True,
+                    legacy_windows=False).print(group)
+        console.print(f"\n[dim]written to {escape(str(out))}[/dim]")
 
 
 @main.command()
@@ -548,16 +747,21 @@ def statusline() -> None:
     except Exception:  # noqa: BLE001
         click.echo("tokunseba · offline")
         return
-    parts = [f"tokunseba · saved {_k(s['tokens_saved'])} tok ({s['pct_saved'] * 100:.0f}%)",
+    parts = [f"tokunseba · saved {_k(s['tokens_saved'])} ({s['pct_saved'] * 100:.0f}%)",
              f"cache {s['cache_hit_rate'] * 100:.0f}%",
-             f"${s['usd_spent']:.2f} today"]
-    if cfg.budget.daily_usd > 0:
-        used = s["usd_spent"] / cfg.budget.daily_usd * 100
+             f"fresh {_k(s.get('fresh_tokens', 0))}"]
+    if cfg.budget.daily_usd > 0:  # only if this machine really is billed per token
+        used = s.get("usd_spent", 0.0) / cfg.budget.daily_usd * 100
         parts.append(f"budget {used:.0f}%")
     drift = s["events"].get("cache_drift", 0)
     if drift:
         parts.append(f"drift {drift}")
     click.echo(" · ".join(parts))
+
+
+def _context_of(turn) -> int:
+    """Everything one turn made the model read, cache included."""
+    return int(turn.input_tokens + turn.cache_read + turn.cache_write)
 
 
 @main.command()
@@ -573,7 +777,7 @@ def advise(since: str, limit: int, target: str) -> None:
     prompt is worth switching on before you switch it on.
     """
 
-    from .advise import EASY_SCORE, collect_turns, counterfactual_cost, judge_turns
+    from .advise import EASY_SCORE, collect_turns, judge_turns
     from .judge import build_chain
     from .ui.terminal import style
 
@@ -599,12 +803,12 @@ def advise(since: str, limit: int, target: str) -> None:
     t.add_column("conf", justify="right")
     t.add_column("domain")
     t.add_column("conf", justify="right")
-    t.add_column("spent", justify="right")
+    t.add_column("context", justify="right")
     t.add_column("opening prompt", overflow="ellipsis", max_width=46)
     for x in adv.turns:
         d = "-" if x.difficulty is None else f"{x.difficulty:.2f}"
         t.add_row(d, f"{x.difficulty_confidence:.2f}", escape(x.domain or "-"),
-                  f"{x.domain_confidence:.2f}", f"${x.cost_usd:.3f}",
+                  f"{x.domain_confidence:.2f}", _k(_context_of(x)),
                   escape(x.prompt.replace(chr(10), " ")[:46]))
     console.print(t)
 
@@ -614,9 +818,10 @@ def advise(since: str, limit: int, target: str) -> None:
                   header_style="dim", box=None)
         d.add_column("domain")
         d.add_column("conversations", justify="right")
-        d.add_column("spent", justify="right")
+        d.add_column("context", justify="right")
         for name, rows in sorted(doms.items(), key=lambda kv: -len(kv[1])):
-            d.add_row(escape(name), str(len(rows)), f"${sum(r.cost_usd for r in rows):.3f}")
+            d.add_row(escape(name), str(len(rows)),
+                      _k(sum(_context_of(r) for r in rows)))
         console.print(d)
     else:
         console.print("[dim]The judge was not confident about the domain of any conversation.[/dim]")
@@ -627,16 +832,14 @@ def advise(since: str, limit: int, target: str) -> None:
         console.print("[dim]None of these scored easy, so there is nothing obvious to "
                       "route away.[/dim]")
     else:
-        spent = sum(x.cost_usd for x in easy)
-        alt = counterfactual_cost(easy, target, cfg.pricing_overrides)
+        context = sum(_context_of(x) for x in easy)
+        output = sum(x.output_tokens for x in easy)
         console.print(f"[bold]{len(easy)} of {len(adv.turns)} conversations scored "
                       f"easy[/bold] (difficulty at or below {EASY_SCORE})")
-        console.print(f"  they cost      ${spent:.3f}")
-        if alt is None:
-            console.print(f"  [dim]no price known for {escape(target)}[/dim]")
-        else:
-            console.print(f"  on {escape(target)}   ${alt:.3f}")
-            console.print(f"  [{style('good')}]difference    ${spent - alt:.3f}[/]")
+        console.print(f"  context read   {_k(context)} tokens")
+        console.print(f"  answers        {_k(output)} tokens")
+        console.print(f"  [{style('good')}]all of that could have run on "
+                      f"{escape(target)}[/]")
 
     console.print()
     console.print("[dim]How to read this. Measured on this machine, the local judge names the "
@@ -698,7 +901,7 @@ def config_show(path_only: bool) -> None:
 
 
 SECTION_ALIASES = {"tier3": "tier3_opts", "thresholds": "thresholds", "judge": "judge",
-                   "budget": "budget", "failover": "failover"}
+                   "budget": "budget", "failover": "failover", "retention": "retention"}
 
 
 @config_cmd.command("set")
@@ -731,6 +934,21 @@ def config_set(key: str, value: str) -> None:
     setattr(target, attr, new)
     config.save(cfg)
     console.print(f"{key} = {new}")
+
+
+from .commands_judge import register as _register_judge  # noqa: E402
+from .commands_retention import register as _register_retention  # noqa: E402
+from .commands_models import register as _register_models  # noqa: E402
+from .commands_route import register as _register_route  # noqa: E402
+from .commands_tier import register as _register_tier  # noqa: E402
+from .commands_wrap import register as _register_wrap  # noqa: E402
+
+_register_wrap(main)
+_register_judge(main)
+_register_retention(main)
+_register_models(main)
+_register_route(main)
+_register_tier(main)
 
 
 if __name__ == "__main__":

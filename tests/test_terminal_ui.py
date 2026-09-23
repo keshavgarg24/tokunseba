@@ -34,6 +34,7 @@ STATS = {
     "requests": 12, "input_tokens": 120_000, "output_tokens": 4_300,
     "tokens_saved": 31_000, "usd_spent": 1.23, "usd_saved": 0.41,
     "cache_read": 90_000, "cache_hit_rate": 0.75, "pct_saved": 0.6,
+    "fresh_tokens": 30_000, "avg_context": 10_000, "max_request_tokens": 45_000,
     "events": {"cache_drift": 2, "secret_redacted": 1, "unknown_signal": 5},
     "by_tool": [{"tool": "claude-code", "requests": 10, "tokens_saved": 30_000, "usd": 1.2},
                 {"tool": "codex", "requests": 2, "tokens_saved": 1_000, "usd": 0.03}],
@@ -105,16 +106,26 @@ def test_sparkline_handles_missing_and_negative_values():
 
 # --------------------------------------------------------------------------- tables
 def test_stat_tiles_show_the_headline_numbers():
+    """Tokens, ratios and cache behaviour: the numbers that are true on any billing plan."""
     out = render(T.stat_tiles(STATS))
     assert "tokens saved" in out and "31.0k" in out
     assert "60% of tool output" in out
+    assert "context sent" in out and "120.0k" in out
+    assert "cache efficiency" in out and "75%" in out
+    assert "fresh tokens" in out and "30.0k" in out
+    assert "avg context" in out and "largest request" in out and "45.0k" in out
+    assert "$" not in out
+
+
+def test_stat_tiles_show_money_only_when_it_is_asked_for():
+    out = render(T.stat_tiles(STATS, money=True))
     assert "$0.41" in out and "$1.23" in out
-    assert "75%" in out and "requests" in out
 
 
 def test_stat_tiles_survive_an_empty_stats_dict():
     out = render(T.stat_tiles({}))
-    assert "tokens saved" in out and "0" in out and "$0.00" in out
+    assert "tokens saved" in out and "0" in out
+    assert "$" not in out
 
 
 def test_by_tool_table_draws_a_proportional_bar():
