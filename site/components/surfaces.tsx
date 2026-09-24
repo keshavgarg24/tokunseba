@@ -39,14 +39,14 @@ export function Surfaces({ items }: { items: Surface[] }) {
       </div>
 
       <div className="mt-6 grid gap-8 lg:grid-cols-2 lg:items-center">
-        <div>
+        <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-fd-muted-foreground">
             {current.eyebrow}
           </p>
           <h3 className="mt-2 text-xl font-semibold tracking-tight">{current.title}</h3>
           <p className="mt-3 text-fd-muted-foreground">{current.body}</p>
         </div>
-        <div>{current.code}</div>
+        <div className="min-w-0">{current.code}</div>
       </div>
     </div>
   );

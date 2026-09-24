@@ -30,6 +30,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reach tier 2 gives up; what ends up on your disk; memory and disk; that an upgrade does
   not improve what it has already seen; and the tools whose protocols cannot be reached.
 
+## [Unreleased]
+
+### Fixed
+
+- Search silently returned nothing when the site is served under a base path, which is what
+  GitHub Pages gives a project repository. The static index is fetched from an absolute URL
+  that defaults to `/api/search`; under a prefix it lives at `<basePath>/api/search` and the
+  default 404s with no error surfaced anywhere. The client now reads the same environment
+  variable the build does.
+- The landing page scrolled sideways on a phone. A wide terminal block inside a grid column
+  pushed the column past the viewport, because grid items do not shrink below their content
+  unless told to.
+
+### Changed
+
+- The hero is centred again, and every section now opens with the same centred eyebrow,
+  heading and standfirst rather than a different alignment per block.
+- The mark behind the hero is centred and slightly more present, and still moves in exactly
+  one way: the blue bar the chevrons narrow into extends, holds, and fades.
+- Removed the `cn` and `serve` dependencies and the file that re-exported one of them.
+
+### Added
+
+- `.github/workflows/pages.yml` publishes the site to GitHub Pages on every push to `main`
+  that touches it.
+
 ## [0.1.2] - 2026-09-25
 
 ### Changed

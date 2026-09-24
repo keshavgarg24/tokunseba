@@ -60,3 +60,42 @@ instead, and `engines` in package.json makes npm warn at install time.
 
 Fumadocs' static Orama index, built at `out/api/search` and downloaded by the client on first
 use. No search service, no API key, nothing to keep running.
+
+## Deploying
+
+The build is a directory of static files. Two paths are set up.
+
+### GitHub Pages, automatically
+
+`.github/workflows/pages.yml` builds and publishes on every push to `main` that touches
+`site/`. One-time setup, once only:
+
+> **Settings → Pages → Source → GitHub Actions**
+
+After that the site is at `https://keshavgarg24.github.io/tokunseba/` and nothing else is
+needed. The workflow builds with `NEXT_PUBLIC_BASE_PATH=/tokunseba`, because GitHub serves a
+project repository from a subdirectory and every absolute path Next emits has to carry that
+prefix or the page loads and nothing on it works.
+
+### Vercel
+
+Import the repository and set **Root Directory** to `site`. Everything else is detected.
+Leave `NEXT_PUBLIC_BASE_PATH` unset: a Vercel deployment is served from `/`, so the site
+should be built without a prefix, which is the default.
+
+### Anywhere else
+
+```bash
+npm run build     # writes out/
+```
+
+Copy `out/` to any web server. `trailingSlash` is on, so every route is a directory with its
+own `index.html` and no rewrite rules are needed.
+
+### The one thing to watch
+
+The static search index is downloaded by the browser from an absolute URL. Under a base path
+it lives at `<basePath>/api/search`, and the default of `/api/search` 404s **silently** --
+the dialog opens, takes what you type, and returns nothing. `components/search.tsx` reads
+`NEXT_PUBLIC_BASE_PATH` for exactly this reason. If you add another base path, that is the
+file to check.

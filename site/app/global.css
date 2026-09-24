@@ -37,6 +37,12 @@ html {
   scrollbar-gutter: stable;
 }
 
+/* Wide content -- a terminal block, a table -- scrolls inside its own box. The page itself
+   never scrolls sideways. `clip` rather than `hidden` so `position: sticky` still works. */
+body {
+  overflow-x: clip;
+}
+
 html > body[data-scroll-locked] {
   margin-right: 0px !important;
   --removed-body-scroll-bar-size: 0px !important;

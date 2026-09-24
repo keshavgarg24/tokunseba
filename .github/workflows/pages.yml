@@ -1,0 +1,63 @@
+name: Site
+
+# Builds the documentation site and publishes it to GitHub Pages on every push to main that
+# touches it. The repository is a project repository, so Pages serves it from /tokunseba
+# rather than from the root, and every absolute path Next emits has to carry that prefix.
+# NEXT_PUBLIC_BASE_PATH is how that gets in; a Vercel build sets nothing and gets a site
+# rooted at /.
+#
+# One-time setup, in Settings -> Pages: set Source to "GitHub Actions".
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "pyproject.toml"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time. A queued run is allowed to wait rather than being cancelled, so a
+# push that lands during a deploy still ends up published.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: site/.nvmrc
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - run: npm ci
+        working-directory: site
+
+      - run: npm run build:pages
+        working-directory: site
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

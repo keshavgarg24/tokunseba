@@ -161,7 +161,7 @@ export default function HomePage() {
             <span className="text-fd-primary">Lose nothing.</span>
           </h1>
 
-          <p className="mx-auto mt-7 max-w-2xl text-balance text-lg text-fd-muted-foreground">
+          <p className="mx-auto mt-6 max-w-2xl text-pretty text-base text-fd-muted-foreground sm:mt-7 sm:text-lg">
             One local proxy in front of every AI coding tool on your machine. It shrinks each
             request without losing a byte, keeps the prompt cache intact, and can send a turn
             to the model that turn actually needs.
@@ -171,10 +171,10 @@ export default function HomePage() {
             <Install />
           </div>
 
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+          <div className="mx-auto mt-5 flex max-w-md flex-col items-stretch gap-3 sm:max-w-none sm:flex-row sm:items-center sm:justify-center">
             <Link
               href="/docs"
-              className="inline-flex items-center gap-2 rounded-lg bg-fd-primary px-4 py-2.5 text-sm font-medium text-fd-primary-foreground transition-opacity hover:opacity-90"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-fd-primary px-4 py-2.5 text-sm font-medium text-fd-primary-foreground transition-opacity hover:opacity-90"
             >
               Read the documentation
               <ArrowRight className="size-4" />
@@ -183,13 +183,13 @@ export default function HomePage() {
               href={repoUrl}
               target="_blank"
               rel="noreferrer noopener"
-              className="inline-flex items-center gap-2 rounded-lg border border-fd-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-fd-accent"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-fd-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-fd-accent"
             >
               Source on GitHub
             </a>
           </div>
 
-          <p className="mt-6 text-xs text-fd-muted-foreground">
+          <p className="mt-6 text-balance text-xs text-fd-muted-foreground">
             Python 3.12 to 3.14 &middot; macOS, Linux and Windows &middot; MIT licensed
           </p>
         </div>
@@ -208,30 +208,15 @@ export default function HomePage() {
       </section>
 
       {/* ------------------------------------------------------------ what it does */}
-      <section className="tk-shell py-20 sm:py-24">
-        <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-fd-primary">
-              What it removes
-            </p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance">
-              Almost none of your context is your thinking
-            </h2>
-            <p className="mt-4 text-fd-muted-foreground">
-              An agent reads a file, runs the tests, lists a directory, reads the file again,
-              and carries the whole transcript forward on every call. The question you typed is
-              a few hundred tokens. What surrounds it is tens of thousands, and most of that is
-              text the model has already seen or never needed.
-            </p>
-            <Link
-              href="/docs/pipeline/how-it-works"
-              className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-fd-primary hover:underline"
-            >
-              How the pipeline decides
-              <ArrowRight className="size-3.5" />
-            </Link>
-          </div>
+      <section className="tk-shell py-16 sm:py-24">
+        <Intro eyebrow="What it removes" title="Almost none of your context is your thinking">
+          An agent reads a file, runs the tests, lists a directory, reads the file again, and
+          carries the whole transcript forward on every call. The question you typed is a few
+          hundred tokens. What surrounds it is tens of thousands, and most of that is text the
+          model has already seen or never needed.
+        </Intro>
 
+        <div className="mt-10 grid gap-8 lg:grid-cols-2 lg:items-center [&>*]:min-w-0">
           <Terminal label="tokunseba top">
             <C>where the tokens went          was     now</C>{'\n'}
             <B>outline:python</B>{'               23k    3.1k'}{'\n'}
@@ -242,9 +227,23 @@ export default function HomePage() {
             passthrough{'  6.6k  '}<C>a first read of a short file</C>{'\n'}
             passthrough{'  4.9k  '}<C>prose the model has to see</C>
           </Terminal>
+
+          <div>
+            <p className="text-pretty text-fd-muted-foreground">
+              Each of those is a different kind of waste and each gets a different answer. The
+              table below is the whole list, and every row leaves a handle behind.
+            </p>
+            <Link
+              href="/docs/pipeline/how-it-works"
+              className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-fd-primary hover:underline"
+            >
+              How the pipeline decides
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </div>
         </div>
 
-        <div className="mt-12 overflow-hidden rounded-xl border border-fd-border">
+        <div className="mt-10 overflow-hidden rounded-xl border border-fd-border">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-fd-border bg-fd-muted/40 text-left">
@@ -268,17 +267,11 @@ export default function HomePage() {
 
       {/* -------------------------------------------------------------- surfaces */}
       <section className="border-y border-fd-border bg-fd-muted/20">
-        <div className="tk-shell py-20 sm:py-24">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-fd-primary">
-            Four ways in
-          </p>
-          <h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-balance">
-            Use it whichever way fits what you already run
-          </h2>
-          <p className="mt-4 max-w-2xl text-fd-muted-foreground">
+        <div className="tk-shell py-16 sm:py-24">
+          <Intro eyebrow="Four ways in" title="Use it whichever way fits what you already run">
             The same pipeline behind every one of them, writing to the same ledger and the same
             handle store.
-          </p>
+          </Intro>
           <div className="mt-10">
             <Surfaces items={SURFACES} />
           </div>
@@ -286,8 +279,18 @@ export default function HomePage() {
       </section>
 
       {/* --------------------------------------------------------------- routing */}
-      <section className="tk-shell py-20 sm:py-24">
-        <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
+      <section className="tk-shell py-16 sm:py-24">
+        <Intro
+          eyebrow="Routing"
+          title="The right model for the turn, across protocols"
+        >
+          Claude Code speaks Anthropic to everything. Codex speaks OpenAI. That is why
+          &ldquo;send the easy turns to the local model&rdquo; is usually a slide rather than
+          a feature: the client cannot address the other endpoint and the other endpoint
+          cannot read the client.
+        </Intro>
+
+        <div className="mt-10 grid gap-8 lg:grid-cols-2 lg:items-center [&>*]:min-w-0">
           <Terminal label="routing across protocols" className="lg:order-2">
             <C>$ </C><K>tokunseba models add deepseek https://api.deepseek.com</K>{'\n'}
             <C>$ </C><K>tokunseba route add --domain devops \</K>{'\n'}
@@ -304,19 +307,7 @@ export default function HomePage() {
           </Terminal>
 
           <div className="lg:order-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-fd-primary">
-              Routing
-            </p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance">
-              The right model for the turn, across protocols
-            </h2>
-            <p className="mt-4 text-fd-muted-foreground">
-              Claude Code speaks Anthropic to everything. Codex speaks OpenAI. That is why
-              &ldquo;send the easy turns to the local model&rdquo; is usually a slide rather
-              than a feature: the client cannot address the other endpoint and the other
-              endpoint cannot read the client.
-            </p>
-            <p className="mt-4 text-fd-muted-foreground">
+            <p className="text-pretty text-fd-muted-foreground">
               tokunseba rewrites the turn instead. System prompts, tool definitions, tool calls
               and their results, images, stop reasons and usage are all mapped, and a streamed
               reply is rebuilt event by event rather than buffered.
@@ -335,16 +326,10 @@ export default function HomePage() {
       {/* ----------------------------------------------------------------- costs */}
       <section className="border-t border-fd-border bg-fd-muted/20">
         <div className="tk-shell py-20 sm:py-24">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-fd-primary">
-            What it costs you
-          </p>
-          <h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-balance">
-            Nothing is free, including this
-          </h2>
-          <p className="mt-4 max-w-2xl text-fd-muted-foreground">
+          <Intro eyebrow="What it costs you" title="Nothing is free, including this">
             Every one of these is a real trade, measured where it can be measured. If a page
             about a tool only lists what it gives you, it is an advertisement.
-          </p>
+          </Intro>
           <div className="mt-10 grid gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
             {COSTS.map((c) => (
               <div key={c.t}>
@@ -353,7 +338,7 @@ export default function HomePage() {
               </div>
             ))}
           </div>
-          <p className="mt-10 max-w-3xl text-sm text-fd-muted-foreground">
+          <p className="mx-auto mt-10 max-w-3xl text-center text-sm text-fd-muted-foreground">
             And the honest headline: <strong className="text-fd-foreground">savings depend
             entirely on what you do</strong>. Long agentic sessions with heavy tool use are
             where the wins are. A short chat saves almost nothing, and no setting changes
@@ -365,7 +350,7 @@ export default function HomePage() {
       {/* ------------------------------------------------------------------- cta */}
       <section className="border-t border-fd-border">
         <div className="tk-shell py-20 text-center sm:py-24">
-          <h2 className="mx-auto max-w-xl text-3xl font-semibold tracking-tight text-balance">
+          <h2 className="mx-auto max-w-xl text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
             Point your tools at it and keep working
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-fd-muted-foreground">
@@ -386,5 +371,32 @@ export default function HomePage() {
         </div>
       </section>
     </main>
+  );
+}
+
+/** A section opening: eyebrow, heading, optional standfirst. Centred, so every section on
+ *  the page starts the same way and the whole thing has a rhythm rather than a different
+ *  alignment per block. */
+function Intro({
+  eyebrow,
+  title,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="mx-auto max-w-2xl text-center">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-fd-primary">
+        {eyebrow}
+      </p>
+      <h2 className="mt-3 text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
+        {title}
+      </h2>
+      {children ? (
+        <div className="mt-4 text-pretty text-fd-muted-foreground">{children}</div>
+      ) : null}
+    </div>
   );
 }

@@ -1,36 +1,65 @@
-/* The mark, drawn large behind the hero and barely there. One thing moves: the blue bar
-   that the two chevrons narrow into, which is the whole point of the shape. It extends,
-   holds, and retracts on a slow loop.
+/* The mark, centred behind the hero and barely there.
+
+   One thing moves: the blue bar that the two chevrons narrow into. It extends out of the
+   vertex, holds, and fades. That is what the shape means -- a wide context arriving on the
+   left and one dense line leaving on the right -- so the animation is the logo doing its own
+   job rather than decoration parked next to it.
 
    Nothing else animates. No gradient, no particles, no drifting anything. */
 .wrap {
   position: absolute;
   inset: 0;
-  overflow: hidden;
+  overflow: clip;
+  max-width: 100%;
   pointer-events: none;
+  display: grid;
+  place-items: center;
 }
 
 .mark {
-  position: absolute;
-  right: -4%;
-  top: 50%;
-  translate: 0 -50%;
-  width: min(30rem, 52%);
+  width: min(46rem, 128%);
   height: auto;
-  opacity: 0.05;
+  opacity: 0.09;
+  /* Fades out before it reaches the edges, so it reads as texture rather than as a picture
+     somebody forgot to crop. */
+  mask-image: radial-gradient(58% 58% at 50% 50%, #000 26%, transparent 76%);
+}
+
+/* On a narrow screen the mark is as wide as the text sitting on it, which reads as a stain
+   rather than as texture. Smaller and fainter, and out of the way. */
+@media (max-width: 640px) {
+  .mark {
+    width: 150%;
+    opacity: 0.05;
+  }
 }
 
 .bar {
-  transform-origin: 39px 32px;
-  animation: reach 7s cubic-bezier(0.5, 0, 0.3, 1) infinite;
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: reach 9s cubic-bezier(0.45, 0, 0.25, 1) infinite;
 }
 
 @keyframes reach {
-  0%, 12% { scale: 0 1; opacity: 0; }
-  38%, 72% { scale: 1 1; opacity: 1; }
-  92%, 100% { scale: 0 1; opacity: 0; }
+  0%,
+  8% {
+    scale: 0 1;
+    opacity: 0;
+  }
+  30%,
+  68% {
+    scale: 1 1;
+    opacity: 1;
+  }
+  88%,
+  100% {
+    scale: 1 1;
+    opacity: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .bar { animation: none; }
+  .bar {
+    animation: none;
+  }
 }
