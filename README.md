@@ -7,7 +7,7 @@
 [![PyPI](https://img.shields.io/pypi/v/tokunseba)](https://pypi.org/project/tokunseba/)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-850%20passing-brightgreen)](#development)
+[![Tests](https://img.shields.io/badge/tests-867%20passing-brightgreen)](#development)
 [![Local only](https://img.shields.io/badge/network-localhost%20only-lightgrey)](#privacy-and-safety)
 
 </div>
@@ -339,6 +339,27 @@ tokunseba wrap claude          run one tool through the proxy, no config change
 tokunseba mcp                  MCP server exposing the expand tool
 tokunseba advise               what your prompts looked like, and what routing would move
 ```
+
+## Using it without the proxy
+
+Not everything is a tool with a base URL. A LangChain callback, a LiteLLM hook, an ASGI middleware, a script that builds its own request, a harness that wants to shrink one blob before it goes into a prompt: those import it.
+
+```python
+from tokunseba import compress, shrink, expand
+
+out = compress(body, protocol="openai")   # a whole request, in the shape you already have
+print(out.saved, out.ratio)               # tokens removed, and what share that was
+send(out.body)                            # same shape, ready to go
+
+text = shrink(open("server.log").read(), command="tail -f server.log")
+code = shrink(open("client.py").read(), path="client.py")
+
+original = expand("h_4b91c07e")           # whatever was folded, byte for byte
+```
+
+It is the same pipeline the proxy runs, against the same ledger and the same handle store under `~/.tokunseba`. That is deliberate rather than convenient: a handle minted by a library call expands from the command line, a library call shows up in `tokunseba stats`, and there is no second implementation to drift. Nothing here starts a server, opens a socket, or sends anything anywhere.
+
+Pass `home=` to point at a different data directory, and `protocol=` for the wire shape: `anthropic`, `openai`, `ollama` or `gemini`.
 
 ## Reports
 

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A library surface: `from tokunseba import compress, shrink, expand`. `compress` takes a
+  whole request body in any of the four wire shapes and hands back the same shape with an
+  account of what changed; `shrink` does one piece of text; `expand` returns an original.
+  It runs the pipeline the proxy runs, against the same ledger and handle store, so a
+  handle minted from Python expands from the command line and there is no second
+  implementation to drift.
+
 - `tokunseba dashboard` serves the same view as `tokunseba ui` as one page off `127.0.0.1`
   and opens it. The terminal dashboard is unchanged and still the default: nothing opens a
   browser unless you run the command whose name says so. The page has no external reference
