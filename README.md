@@ -179,6 +179,17 @@ Four things bound this:
 
 This needs no model, no key and no download. The default judge answers from calibrated rules in microseconds.
 
+**It also abstains a great deal, and you should know that before you turn routing on.** The rules are deliberately lopsided: being wrong about "this is hard" changes nothing, and being wrong about "this is easy" sends real work to a model that cannot do it. So the difficulty gate is set where most ordinary coding prompts do not clear it. Measured against the shipped rules and the default `judge.gate_threshold = 0.8`:
+
+| prompt | difficulty confidence | routed |
+|---|---|---|
+| `fix the typo in the header comment` | 0.45 | no |
+| `rename this variable to userId` | 0.45 | no |
+| `refactor the auth module to use async` | 0.70 | no |
+| `why is the expiry test failing` | 0.45 | no |
+
+With the default judge, expect routing to fire on a small minority of conversations, mostly chitchat and one-line acknowledgements. That is the intended behaviour and not a misconfiguration. Three things change it, in increasing order of how much you are trusting: lower `judge.gate_threshold`, write rules on `--domain` rather than `--max-difficulty` (domain is the signal the rules are confident about), or enable the local judge, which reads the prompt rather than matching it. Run `tokunseba advise` first: it tells you, from your own history, how many conversations would actually have moved.
+
 ### Across protocols
 
 Claude Code speaks Anthropic to everything it talks to. Codex speaks OpenAI. That is the reason "send the easy turns to the local model" is usually a slide rather than a feature: the client cannot address the other endpoint, and the other endpoint cannot read the client.

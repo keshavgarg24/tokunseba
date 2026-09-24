@@ -366,9 +366,14 @@ where the tokens went          was     now
                   by event rather than buffered, so it still arrives a token at a time.
                 </li>
                 <li>
-                  <b>It abstains rather than guesses.</b> A routing decision only fires when the
-                  judge clears a confidence gate. Anything touching finance, law, medicine or
-                  security is never routed down.
+                  <b>It abstains rather than guesses, and it abstains often.</b> Being wrong
+                  about &ldquo;this is hard&rdquo; changes nothing; being wrong about
+                  &ldquo;this is easy&rdquo; sends real work to a model that cannot do it. The
+                  shipped rules are set accordingly, so with the default judge most ordinary
+                  coding prompts do not clear the gate and are not routed at all. Anything
+                  touching finance, law, medicine or security is never routed down under any
+                  setting. <code>tokunseba advise</code> tells you, from your own history, how
+                  many conversations would actually have moved.
                 </li>
                 <li>
                   <b>You can check it first.</b> <code>tokunseba route test</code> shows where a
