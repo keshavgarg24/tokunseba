@@ -115,7 +115,7 @@ const COSTS = [
   },
   {
     t: 'Memory and disk',
-    d: 'About 40 MB installed and roughly 60 MB resident. The optional local judge is a separate opt-in: 808 MB of weights and about 2.2 GB of memory while loaded, downloaded only when you ask for it by name.',
+    d: 'Measured on a clean install: 75 MB on disk with its dependencies, 14 MB resident while idle, 43 MB once the tokenizer has loaded. The optional local judge is a separate opt-in on top of that: 808 MB of weights and about 2.2 GB of memory while loaded, downloaded only when you ask for it by name.',
   },
   {
     t: 'An upgrade does not improve what it has already seen',
