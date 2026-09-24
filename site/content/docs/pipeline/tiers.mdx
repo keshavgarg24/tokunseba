@@ -1,0 +1,94 @@
+---
+title: The four tiers
+description: How much tokunseba is allowed to do, decided one layer at a time.
+---
+
+Every capability sits in one of four tiers. Each tier states what it is permitted to change
+*before* you enable it, and each can be turned off on its own.
+
+```bash
+tokunseba tier                # which are on
+tokunseba tier explain 2      # one tier in full
+tokunseba tier enable 3       # turn one on, after it tells you what that means
+tokunseba tier disable 2      # turn one off
+```
+
+## Tier 0, observe
+
+**Always on. Cannot be turned off, because it changes nothing.**
+
+Counts tokens, records what the prompt cache did, writes the ledger. Every byte is forwarded
+exactly as the client sent it. This is what makes `stats`, `report`, `top` and the dashboard
+possible.
+
+## Tier 1, reversible
+
+**On by default. May change tool results only.**
+
+| What | Recorded as |
+|---|---|
+| Strips terminal escapes and progress-bar redraws | `canonical` |
+| Replaces a repeated tool result with a pointer to the first copy | `dedup_ref` |
+| Replaces a re-read file with the diff since you last saw it | `diff_ref` |
+| Adds cache breakpoints a client forgot to send | `cache_injected` |
+| Detects and reports cache prefix drift | `cache_drift` |
+
+Everything here is reversible in the strict sense: the replacement text names a handle, and
+the handle holds the original.
+
+## Tier 2, reach preserving
+
+**On by default. May change the shape of a long tool result.**
+
+| What | Recorded as |
+|---|---|
+| Summarises test, build and install output down to what failed | `summary:<kind>` |
+| Folds the bodies out of a source file, keeping every signature | `outline:<language>` |
+| Replaces lock files, minified bundles and binaries with one line | `junk:<kind>` |
+| Chooses a smaller encoding when the tokenizer agrees it is smaller | `encoding:<kind>` |
+| Keeps the head and the tail of anything still too long | `truncate` |
+
+"Reach preserving" means the full text stays one call away rather than gone. The risk is
+real but bounded: if the answer depended on line 4,000 of a log, the assistant has to ask for
+it instead of already having it.
+
+Turn this off if you work with output where every line matters and you would rather send
+every one of them. Tier 1 keeps working without it.
+
+## Tier 3, opt in
+
+**Off by default. May change which model answers, and the text of a request.**
+
+This is the only tier that can change the answer you get.
+
+| What | Recorded as |
+|---|---|
+| Sends a turn to a different model, translating protocols if needed | `model_routed`, `local_routed`, `rule_routed`, `protocol_translated` |
+| Lowers reasoning effort on a turn that does not need it | `effort_set` |
+| Redacts credentials before the request leaves this machine | `secret_redacted` |
+| Labels tool results that look like prompt injection | `injection_suspected` |
+
+It is gated twice over. A change only happens when the judge clears a confidence threshold,
+and every session is randomly assigned to a control or treatment arm so `tokunseba stats --ab`
+can show you what the treatment actually did.
+
+Nothing inside tier 3 is on merely because the tier is on. Each sub-capability has its own
+switch:
+
+```bash
+tokunseba config set tier3.model_routing true
+tokunseba config set tier3.local_routing true
+tokunseba config set tier3.effort_routing true
+tokunseba config set tier3.redact_secrets true
+tokunseba config set tier3.annotate_injections true
+```
+
+## Trying a tier before committing to it
+
+```bash
+tokunseba replay --since 7d --tier 2
+```
+
+Re-runs traffic you have already recorded as though only those tiers were on, from the
+request bodies already on disk. Nothing is sent anywhere. See
+[Replay](/docs/reference/replay).

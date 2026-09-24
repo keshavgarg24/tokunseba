@@ -1,0 +1,69 @@
+---
+title: Wrapping a single run
+description: Using it for one command without changing anything on disk.
+---
+
+`wrap` is the most reliable way in, and the one to start with.
+
+```bash
+tokunseba wrap claude
+```
+
+It launches the tool with the proxy's base URLs set **on that process**, for that run only.
+Nothing is written to a settings file, nothing is added to your shell profile, and when the
+tool exits nothing is left behind.
+
+## Why it is more reliable than `init`
+
+Writing a tool's settings file can be overridden by an exported environment variable, and
+several launchers export one. An exported `ANTHROPIC_BASE_URL` pointing at the provider beats
+anything `init` writes, silently.
+
+Wrapping sets the variables on the tool's own process, so nothing inherited can win.
+
+## Passing the tool its own arguments
+
+Everything after `--` goes to the tool:
+
+```bash
+tokunseba wrap codex -- --model gpt-5
+tokunseba wrap aider -- --no-auto-commits src/
+```
+
+## Anything not in the list
+
+```bash
+tokunseba wrap-any -- my-agent --flag
+```
+
+exports every tokunseba base URL and runs the command. Use it for a tool that is not in the
+known list, or for a whole shell:
+
+```bash
+tokunseba wrap-any -- zsh
+```
+
+Everything started from that shell is routed, and nothing outside it is.
+
+## Compressing one command's output
+
+A different thing with a similar shape, and often the highest-value change you can make:
+
+```bash
+tokunseba run -- pytest -q
+tokunseba run -- npm install
+tokunseba run -- cargo build 2>&1
+```
+
+Runs the command, prints its output **already compressed**, and exits with the command's own
+exit code. No proxy is involved at all.
+
+If your agent can run shell commands, telling it to prefix long-running commands with
+`tokunseba run --` stops the output being large in the first place, rather than shrinking it
+after it is already in the transcript.
+
+Anything left out is behind a handle, exactly as it would be through the proxy:
+
+```bash
+tokunseba expand h_db4d5709
+```

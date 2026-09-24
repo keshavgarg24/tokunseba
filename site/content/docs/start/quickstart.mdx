@@ -1,0 +1,104 @@
+---
+title: Quickstart
+description: From nothing to a working proxy, with evidence rather than a claim.
+---
+
+## One tool, nothing configured
+
+The lightest possible way to try it. No settings file is written and nothing on the machine
+changes:
+
+```bash
+uv tool install tokunseba
+tokunseba wrap claude
+```
+
+`wrap` launches the tool with the proxy in that process's environment for that run only. When
+the tool exits, nothing is left behind. It works for `claude`, `codex`, `aider`, `opencode`,
+`cline`, `continue`, `goose`, `gemini`, `ollama`, `crush` and `qwen`, and
+`tokunseba wrap-any -- <command>` covers everything else.
+
+Run `tokunseba wrappable` to see which of them are installed here.
+
+## Every tool, permanently
+
+```bash
+tokunseba init
+```
+
+Then open a new terminal and check:
+
+```bash
+tokunseba doctor
+```
+
+```ansi
+ ok  proxy reachable           listening on 127.0.0.1:7777
+ ok  tool: claude-code         ANTHROPIC_BASE_URL -> http://127.0.0.1:7777/anthropic
+ ok  tool: codex               model_provider = 'tokunseba'
+ ok  tool: shell-env           env block present in ~/.zshrc
+ --  tool: gui-apps            GUI applications go straight to the provider
+```
+
+A `--` row is not a failure. It is something tokunseba can see but has not been asked to do.
+
+## Prove it is actually in the path
+
+`doctor` reads configuration. `verify` reads traffic:
+
+```bash
+tokunseba verify
+```
+
+It will tell you whether requests have actually arrived, how many, and what was done to them.
+If nothing has arrived it says so plainly rather than showing you zeros and letting you draw
+the wrong conclusion. See [Proving it works](/docs/start/verify).
+
+## Use your tools normally
+
+Nothing about how you work changes. Run Claude Code, Codex, or whatever you use, exactly as
+before.
+
+After a session or two:
+
+```bash
+tokunseba status     # today, at a glance
+tokunseba stats      # the last seven days
+tokunseba top        # what the tokens were spent on
+tokunseba report     # the whole picture on one page
+tokunseba dashboard  # the same, in a browser
+```
+
+## Look at one request in full
+
+Take a request id from `tokunseba stats --json` or `tokunseba top`, then:
+
+```bash
+tokunseba explain 1f4c9a20e8bb
+```
+
+That prints the original beside the replacement, block by block, so you can see precisely
+what was removed and what was kept. Every substitution names a handle:
+
+```bash
+tokunseba expand h_4b91c07e
+```
+
+returns the original text, byte for byte.
+
+## Decide how far it goes
+
+Tiers 0, 1 and 2 are on. Tier 3, the only one that can change an answer, is off:
+
+```bash
+tokunseba tier                # what is on
+tokunseba tier explain 3      # what tier 3 would be allowed to do
+```
+
+Before turning anything on or off, you can try it against traffic you have already recorded:
+
+```bash
+tokunseba replay --since 7d --tier 1
+```
+
+Nothing is sent anywhere. See [Replay](/docs/reference/replay).

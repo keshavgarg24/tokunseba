@@ -1,0 +1,76 @@
+---
+title: Every signal
+description: The full vocabulary of what the proxy records, and what each one means.
+---
+
+A signal is something the proxy decided, noticed, or refused to do. They appear in
+`tokunseba stats`, `tokunseba report` and on the dashboard, and every one of them is
+explained in the tool itself as well as here.
+
+A signal nobody can interpret is noise, so the list below and the code that emits them are
+kept in step by a test: a signal with no explanation fails the build.
+
+## Cache
+
+| Signal | What it means |
+|---|---|
+| `cache_drift` | a cached prefix changed, so the next request re-read it in full |
+| `cache_injected` | tokunseba added cache breakpoints a client had omitted |
+| `cache_miss_unexplained` | a cached request read nothing back |
+| `ttl_advice` | this session is slow-paced enough to benefit from the 1 hour cache |
+
+## Routing
+
+| Signal | What it means |
+|---|---|
+| `route_signal` | domain and difficulty read from the opening prompt |
+| `rule_routed` | a first turn matched a routing rule and went to the model it named |
+| `model_routed` | an easy first turn was sent to a smaller model |
+| `local_routed` | an easy first turn was sent to a local model |
+| `protocol_translated` | a turn was rewritten into the protocol its new upstream speaks, and the reply was rewritten back |
+| `route_refused` | a routing rule matched but its target could not be used, so the turn was left alone |
+| `effort_set` | an easy turn was sent at low effort |
+| `judge_error` | the local judge failed or timed out; the conservative path was taken |
+
+## Safety
+
+| Signal | What it means |
+|---|---|
+| `secret_detected` | a credential was seen in an outbound request |
+| `secret_redacted` | a credential was replaced before the request left this machine |
+| `injection_suspected` | a tool result looked like it was addressing the assistant |
+| `injection_corroborated` | the local judge was asked whether it agreed with a regex hit |
+
+## Trouble
+
+| Signal | What it means |
+|---|---|
+| `passthrough_after_error` | a bug in tokunseba was hit, so the request was forwarded exactly as the tool sent it |
+| `upstream_error` | the upstream could not be reached and the request returned 502 |
+| `failover_used` | the upstream failed and the same model was retried elsewhere |
+| `record_error` | a response was delivered but its usage could not be recorded |
+| `ref_dangling` | a stored reference lost its target and the full text was sent |
+| `context_overflow_risk` | a local model was close to silently truncating the prompt |
+| `budget_exceeded` | today's tokens passed the configured daily budget |
+
+## Housekeeping
+
+| Signal | What it means |
+|---|---|
+| `pruned` | history past the retention window was deleted from this machine |
+
+## Reading them
+
+```bash
+tokunseba stats --since 7d     # counts, with the explanation beside each
+tokunseba report               # the same, grouped, with graphs
+tokunseba dashboard            # the same, in a browser
+```
+
+The two worth acting on immediately:
+
+- **`cache_drift`** means a client is putting something changing inside its own cached
+  prefix, so the cache misses on every turn. `tokunseba report` names the region.
+- **`passthrough_after_error`** means tokunseba hit a bug and forwarded your request
+  untouched. Nothing was broken, but something in it is worth reporting.
+

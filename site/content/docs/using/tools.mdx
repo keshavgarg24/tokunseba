@@ -1,0 +1,77 @@
+---
+title: Supported tools
+description: What init configures, what it can wrap, and what it cannot reach.
+---
+
+```bash
+tokunseba wrappable
+```
+
+shows the list and marks which of them are installed on this machine.
+
+## Configured automatically by `init`
+
+| Tool | How |
+|---|---|
+| Claude Code | `ANTHROPIC_BASE_URL` in its settings file, plus hooks and a status line |
+| Codex CLI | a `tokunseba` model provider in `config.toml` |
+| Shell environment | a block in your shell profile, so any SDK client picks it up |
+| Ollama, LM Studio, llama.cpp, vLLM | recognised as upstreams you can route to |
+
+The shell block is what covers everything else that reads `ANTHROPIC_BASE_URL`,
+`OPENAI_BASE_URL` or `OPENAI_API_BASE`, which is most SDK clients and most scripts.
+
+## Wrappable
+
+Run one tool through the proxy without changing anything on disk:
+
+```bash
+tokunseba wrap claude
+tokunseba wrap codex -- --model gpt-5
+tokunseba wrap aider
+```
+
+| | | |
+|---|---|---|
+| `claude` | Claude Code | `opencode` | OpenCode |
+| `codex` | OpenAI Codex CLI | `cline` | Cline CLI |
+| `aider` | Aider | `continue` | Continue CLI |
+| `goose` | Goose | `gemini` | Gemini CLI |
+| `crush` | Crush | `qwen` | Qwen Code |
+| `ollama` | Ollama client | | |
+
+Anything else:
+
+```bash
+tokunseba wrap-any -- my-agent --flag
+tokunseba wrap-any -- zsh          # a whole shell, everything in it routed
+```
+
+## What cannot be reached
+
+| Tool | Why |
+|---|---|
+| GitHub Copilot | Talks to its own backend over a closed protocol |
+| Cursor | Talks to its own backend over a closed protocol |
+| Windsurf | Talks to its own backend over a closed protocol |
+
+These are not missing features. A proxy can only sit in front of a client that speaks a
+protocol you can parse, and these do not. tokunseba says so plainly in `wrappable` rather
+than listing them as "coming soon".
+
+<Callout>
+If one of these tools has a setting for a custom OpenAI-compatible endpoint, point it at
+`http://127.0.0.1:7777/openai` and it will work like anything else. It is the closed default
+path that cannot be intercepted, not the tool.
+</Callout>
+
+## Checking what a tool is actually doing
+
+```bash
+tokunseba doctor     # what is configured
+tokunseba verify     # what actually arrived
+tokunseba stats      # by tool
+```
+
+A tool that is configured but never appears in `stats --by-tool` is being overridden by
+something. See [Proving it works](/docs/start/verify).

@@ -1,0 +1,85 @@
+---
+title: Handles and recovery
+description: Getting back anything that was left out, byte for byte.
+---
+
+Nothing tokunseba removes is destroyed. Every substitution names a handle, and the handle
+holds the original.
+
+```bash
+tokunseba expand h_4b91c07e
+```
+
+That prints the original text exactly as it arrived: the same bytes, the same line endings,
+the same trailing whitespace. If what comes back differs in any way from what your tool
+produced, that is a bug worth reporting.
+
+## Where handles come from
+
+A handle looks like `h_` followed by twelve hexadecimal characters, derived from the content.
+The same text always gets the same handle. They appear:
+
+- inside the replacement text, so the **model** can ask for the original
+- in `tokunseba top`, so **you** can
+- in `tokunseba explain`, next to what they replaced
+
+## Three ways to redeem one
+
+<Tabs items={['Shell', 'MCP', 'Python']}>
+<Tab value="Shell">
+```bash
+tokunseba expand h_4b91c07e
+```
+Any agent that can run shell commands can do this itself. It is the reason the marker text
+spells out the command rather than just naming the handle.
+</Tab>
+<Tab value="MCP">
+```bash
+tokunseba init --with-mcp
+```
+Registers an MCP server exposing a single `expand` tool. For agents that have no shell, this
+is how the reach is preserved. See [MCP](/docs/using/mcp).
+</Tab>
+<Tab value="Python">
+```python
+from tokunseba import expand
+
+original = expand("h_4b91c07e")   # None if it is not there
+```
+See [The Python API](/docs/using/library).
+</Tab>
+</Tabs>
+
+## When a handle is gone
+
+`expand` returns nothing and says so. There are exactly two reasons:
+
+1. **The retention window passed** and the blob was pruned. Default is 90 days for the
+   ledger and 14 days for stored request bodies. See [Retention](/docs/reference/retention).
+2. **The text contained something that looked like a credential**, so it was never written to
+   disk in the first place. In that case the marker says so rather than naming a handle:
+
+   ```
+   [tokunseba: the full text is not stored, because it contains what looks like a
+    credential. Nothing was written to disk.]
+   ```
+
+## Seeing one request in full
+
+```bash
+tokunseba explain 1f4c9a20e8bb
+```
+
+Prints the request block by block, original beside replacement, with the transform kind and
+the token counts for each. This is the command to reach for when you want to know exactly
+what the model saw.
+
+Request ids come from `tokunseba top`, `tokunseba stats --json`, and
+`tokunseba replay --verbose`.
+
+<Callout>
+`explain` needs the stored request body, which has its own shorter retention window
+(`retention.keep_bodies_days`, 14 days by default) because bodies are the bulkiest thing
+tokunseba stores. After that the ledger still knows what happened, but the side-by-side view
+is gone.
+</Callout>

@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- The browser dashboard was redesigned to match the documentation site: dark by default with
+  a toggle that is remembered, the same near-black palette, and no animation. The self
+  drawing logo and the drifting token stream are gone; they were decoration and the page is
+  a set of numbers.
+
+### Added
+
+- A documentation site, built with Fumadocs on Next.js and exported as static files. Full
+  text search with no search service behind it, a page per subject, and a command reference
+  generated from the command definitions so it cannot drift.
+
 ## [0.1.1] - 2026-09-24
 
 ### Fixed

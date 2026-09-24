@@ -1,0 +1,90 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+/* The palette is the logo: near black, one blue, and no third colour anywhere unless it
+   is carrying meaning. Everything else is inherited from the neutral preset on purpose,
+   because a documentation site that invents its own spacing scale reads as a theme rather
+   than as documentation. */
+:root {
+  --tk-blue: #3d7be0;
+  --tk-blue-bright: #6fa3ff;
+  --tk-ink: #232831;
+}
+
+.dark {
+  --color-fd-background: #070a0f;
+  --color-fd-card: #0c1118;
+  --color-fd-popover: #0c1118;
+  --color-fd-muted: #11161f;
+  --color-fd-secondary: #151b25;
+  --color-fd-accent: #1b2330;
+  --color-fd-foreground: #e7edf5;
+  --color-fd-muted-foreground: #98a4b3;
+  --color-fd-border: rgba(143, 161, 184, 0.16);
+  --color-fd-primary: var(--tk-blue-bright);
+  --color-fd-primary-foreground: #070a0f;
+  --color-fd-ring: var(--tk-blue);
+}
+
+:root:not(.dark) {
+  --color-fd-primary: var(--tk-blue);
+  --color-fd-primary-foreground: #ffffff;
+  --color-fd-ring: var(--tk-blue);
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}
+
+body {
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+}
+
+/* Command flags are two hyphens. A mono font with programming ligatures draws `--since`
+   as one long dash, which is a different flag and not one that exists. */
+code,
+pre,
+kbd,
+.font-mono {
+  font-variant-ligatures: none;
+}
+
+/* ------------------------------------------------------------------ home page */
+.tk-shell {
+  width: 100%;
+  max-width: 68rem;
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+}
+
+.tk-display {
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1.02;
+  font-size: clamp(2.5rem, 7vw, 4.75rem);
+}
+
+.tk-grid-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--color-fd-border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--color-fd-border) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: radial-gradient(70% 60% at 50% 22%, #000 0%, transparent 78%);
+  opacity: 0.55;
+}
+
+.tk-term {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.85;
+  font-variant-ligatures: none;
+}

@@ -1,0 +1,108 @@
+---
+title: Reading files
+description: Keeping every signature in a source file and folding the bodies.
+---
+
+When an assistant asks to read a 2,000 line module, it almost never needs 2,000 lines. It
+needs to know what is in there: the imports, the classes, the signatures, the docstrings, the
+constants, the decorators. The bodies matter for the two or three functions the task is
+actually about, and those it can ask for.
+
+So tokunseba keeps the skeleton and replaces each long body with one line saying how many
+lines went and how to get them back.
+
+```ts title="what the model receives"
+     1	import { readFile } from "node:fs/promises";
+     2	import type { Config } from "./config";
+     3
+     4	export const DEFAULT_PORT = 7777;
+     5
+     6	/** Loads a config file and merges it with the defaults. */
+     7	export async function loadConfig(path: string): Promise<Config> {
+        // [tokunseba: 15 lines folded; whole file: tokunseba expand h_4b91c07e]
+    23	}
+    24
+    25	export class Proxy {
+    26	  private port: number;
+    27
+    28	  constructor(port: number) { this.port = port; }
+    29
+    30	  async start(): Promise<void> {
+        // [tokunseba: 9 lines folded; whole file: tokunseba expand h_4b91c07e]
+    40	  }
+    41	}
+```
+
+The line numbers that survive are the file's own. The jump from 7 to 23 tells the model
+exactly which lines are missing, so asking for the right part is one targeted read rather
+than a search.
+
+## What is never folded
+
+- **Imports, and anything else at module level.** That is the file's interface.
+- **The signature line, its decorators, and its docstring.** The docstring is usually the
+  most informative thing in a function and the smallest part of it.
+- **A body shorter than eight lines**, where the marker is not smaller than the body.
+- **Anything at all**, if the result would not be meaningfully smaller than the original.
+
+## Languages
+
+| Language | How |
+|---|---|
+| Python | Parsed with the standard library, so the line ranges are exact. |
+| JavaScript, TypeScript, JSX, TSX | Scanned |
+| Go, Rust, Java, Kotlin, Scala, Swift | Scanned |
+| C, C++, C#, Objective-C, PHP | Scanned |
+
+"Scanned" means a reader that tracks strings and comments, matches braces, and refuses to
+fold when the count does not balance. A real parser for each of these would be a dependency
+tree larger than the whole project, and a scanner that understands strings gets the same
+answer on anything that compiles.
+
+<Callout>
+When the scan is not certain, it folds nothing. A file forwarded whole is merely large. A
+file folded in the wrong place is wrong.
+</Callout>
+
+## What stops it firing
+
+Any of these leave the file exactly as it arrived:
+
+- fewer than 60 lines
+- no function body long enough to be worth a marker
+- a file that does not parse, for Python
+- unbalanced braces, for the scanned languages
+- a file that is mostly signatures already, where the fold would remove under a quarter of it
+- a minified bundle, which is one enormous line and is handled as junk instead
+- no file path on the tool call, because the language cannot be known from content alone
+
+## Line-number gutters
+
+Most coding agents hand a file over with a `cat -n` style gutter. tokunseba computes the fold
+on the source *underneath* the gutter and emits the original lines, gutter and all, so what
+is kept is byte for byte what the tool produced.
+
+Tab, arrow (`→`) and pipe (`|`) separators are all recognised, including the case where the
+separator on a blank line has been stripped by whitespace normalisation.
+
+## Getting the file back
+
+Every outline names a handle:
+
+```bash
+tokunseba expand h_4b91c07e
+```
+
+That returns the whole file, byte for byte, including the gutter if there was one. The model
+can do the same thing through the shell, or through the MCP `expand` tool if it has no shell.
+
+## Turning it off
+
+Outlining is part of tier 2:
+
+```bash
+tokunseba tier disable 2
+```
+
+That also turns off summarising and junk detection. There is deliberately no switch for
+outlining alone: the tier is the unit you consented to.

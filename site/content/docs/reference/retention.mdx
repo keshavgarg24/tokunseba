@@ -1,0 +1,91 @@
+---
+title: Retention
+description: How long it keeps your history, and how to keep less.
+---
+
+Two windows, because the two things are very different sizes.
+
+| What | Default | Why |
+|---|---|---|
+| The ledger and the blobs | 90 days | Request metadata and the originals behind handles |
+| Stored request bodies | 14 days | The bulkiest thing stored, and only `explain` and `replay` read them |
+
+```bash
+tokunseba retention show
+```
+
+```ansi
+ keeping          90d        oldest record  12 Jun 2026, 105 days ago
+ bodies           14d        on disk        412 MB
+ automatic prune  on         last ran       today
+```
+
+## Changing it
+
+```bash
+tokunseba retention keep 30d
+tokunseba retention keep 1y
+tokunseba retention keep forever
+tokunseba retention keep 24h --bodies 1h
+```
+
+Accepts `24h`, `30d`, `6w`, `6m`, `1y`, or `forever`.
+
+## Pruning now
+
+```bash
+tokunseba retention prune              # to the configured window
+tokunseba retention prune --keep 7d    # tighter, just this once
+tokunseba prune --days 30              # the same thing, top level
+```
+
+## Automatic pruning
+
+```bash
+tokunseba retention auto on
+tokunseba retention auto off
+```
+
+Runs once a day. Records a `pruned` signal so the deletion is visible in your own reports
+rather than happening silently.
+
+## What is in each store
+
+| Path | Contains | Sensitive |
+|---|---|---|
+| `ledger.sqlite` | Token counts, timings, model, tool, project path, transform kinds | Paths and model names, not content |
+| `blobs/` | The original text behind each handle | Yes, this is your code and your output |
+| `bodies/` | Whole request bodies | Yes, and it includes your prompts |
+| `backups/` | Copies of the config files `init` edited | Only what was in them |
+| `logs/` | The proxy's own log | No content |
+
+## Storing less in the first place
+
+```bash
+tokunseba config set proxy.store_bodies false
+```
+
+Stops whole request bodies being written at all. `tokunseba explain` and `tokunseba replay`
+stop working, because both read them. Everything else keeps working.
+
+<Callout type="warn">
+Credentials are scanned for before anything is written to either store. If one is found,
+nothing is written, and the marker in the replacement says so rather than naming a handle
+that does not exist. See [Privacy and safety](/docs/pipeline/safety).
+</Callout>
+
+## Deleting everything
+
+```bash
+tokunseba retention keep 24h
+tokunseba retention prune
+```
+
+or simply:
+
+```bash
+rm -rf ~/.tokunseba
+```
+
+`tokunseba uninstall` deliberately does not do this for you. It prints the path and leaves
+the decision to you.

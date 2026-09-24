@@ -1,0 +1,83 @@
+---
+title: Program output
+description: Reducing a test run, a build or a log to what actually happened.
+---
+
+Nine hundred lines of passing tests wrapped around the one that failed is the single most
+common shape of waste in an agentic session. tokunseba recognises the shape and keeps the
+part that carries the information.
+
+## What it recognises
+
+| Kind | What survives |
+|---|---|
+| `pytest` | Every failure, its assertion text, the summary counts |
+| `jest` / `vitest` | Failed suites and their diffs, the counts |
+| `cargo` | Errors and warnings with their spans, the final status |
+| `go test` | Failing packages and their output, the summary |
+| `npm` / `pip` / `uv` install | What was installed, what warned, what failed |
+| `git diff` | The hunks, not the context padding around them |
+| directory listings | The shape of the tree rather than every entry |
+| stack traces | The frames in your own code, the exception, the message |
+
+The detection uses the shape of the text and, when available, the command that produced it.
+`pytest -q` is recognised where the same text on its own might not be, which is why
+`tokunseba run` and the library's `shrink(..., command=...)` both take the command.
+
+<Callout type="warn">
+The line that says `FAILED` is never the line that gets dropped. If you find output where a
+failure was removed and a pass was kept, that is a bug worth reporting.
+</Callout>
+
+## What it looks like
+
+```ansi title="what the model receives"
+tests/test_expiry.py::test_expiry FAILED
+E       AssertionError: assert 3 == 4
+E        +  where 3 = len([1, 2, 3])
+
+=== 1 failed, 900 passed in 4.21s ===
+
+[tokunseba: 901 lines / ~11725 tokens omitted. Full output: tokunseba expand h_db4d5709]
+```
+
+## Junk
+
+Some files carry no information a model can use at all:
+
+| Kind | Example |
+|---|---|
+| lock files | `package-lock.json`, `uv.lock`, `Cargo.lock`, `poetry.lock` |
+| minified bundles | anything whose lines run to thousands of characters |
+| binaries | detected by content, not by extension |
+
+These become one line describing what they were, plus a handle. Sending a 40,000 line lock
+file to a language model is not a compression problem, it is a mistake, and tokunseba treats
+it as one.
+
+## Without the proxy
+
+The same reduction is available for any command, with no proxy in the path:
+
+```bash
+tokunseba run -- pytest -q
+tokunseba run -- npm install
+tokunseba run -- cargo build
+```
+
+It runs the command, prints the compressed output, and exits with the command's own exit
+code. Anything left out is behind a handle, exactly as it would be through the proxy.
+
+For an agent that can run shell commands, telling it to prefix long-running commands with
+`tokunseba run --` is often the single highest-value change you can make, because it stops
+the output being large in the first place rather than shrinking it afterwards.
+
+## From Python
+
+```python
+from tokunseba import shrink
+
+text = shrink(open("build.log").read(), command="cargo build")
+```
+
+See [The Python API](/docs/using/library).

@@ -1,0 +1,144 @@
+---
+title: The Python API
+description: compress, shrink and expand, for code that is not behind the proxy.
+---
+
+Not everything is a tool with a base URL. A LangChain callback, a LiteLLM hook, an ASGI
+middleware, a script that assembles its own request, a harness that wants to shrink one blob
+before it goes into a prompt: those import it.
+
+```python
+from tokunseba import compress, shrink, expand
+```
+
+It is the **same pipeline the proxy runs**, against the same ledger and the same handle store
+under `~/.tokunseba`. That is deliberate rather than convenient: a handle minted by a library
+call expands from the command line, a library call shows up in `tokunseba stats`, and there
+is no second implementation to drift.
+
+Nothing here starts a server, opens a socket, or sends anything anywhere.
+
+## compress
+
+Shrink a whole request body in place of sending it.
+
+```python
+from tokunseba import compress
+
+result = compress(body, protocol="openai")
+
+result.body            # the same wire shape, ready to send
+result.saved           # tokens removed
+result.ratio           # 0.0 to 1.0, the share that did not have to be sent
+result.tokens_before   # what it would have been
+result.tokens_after    # what it is
+result.changes         # a list of Change records
+bool(result)           # True if anything changed
+```
+
+| Argument | Meaning |
+|---|---|
+| `body` | The request, as a dict, in the shape your provider expects |
+| `protocol` | `"anthropic"`, `"openai"`, `"ollama"` or `"gemini"` |
+| `session_id` | Worth passing when you have one, so the ledger groups turns into conversations |
+| `request_id` | Optional, for correlating with your own logs |
+| `home` | A different data directory |
+
+Each `Change` carries `position`, `kind`, `tokens_before`, `tokens_after`, `handle` and a
+`saved` property.
+
+```python
+for c in result.changes:
+    print(c.kind, c.saved, c.handle)
+# outline:python 3163 h_2a1e8e4d662f
+```
+
+<Callout>
+Only tool results are ever rewritten. A prompt someone typed, a system prompt, and an
+assistant's own replies are forwarded exactly as they arrived, whatever is in them.
+</Callout>
+
+## shrink
+
+One piece of text, treated the way a tool result would be.
+
+```python
+from tokunseba import shrink
+
+text = shrink(open("build.log").read(), command="cargo build")
+code = shrink(open("client.py").read(), path="client.py")
+```
+
+| Argument | Meaning |
+|---|---|
+| `text` | The text to shrink |
+| `path` | The file it came from. This is what makes a source file get outlined rather than truncated, and what lets a lock file be recognised. |
+| `command` | The command that produced it. `"pytest -q"` is recognised where the same text on its own is not. |
+| `home` | A different data directory |
+
+The returned text carries its own recovery instruction when anything was left out.
+
+## expand
+
+```python
+from tokunseba import expand
+
+original = expand("h_4b91c07e")   # str, or None
+```
+
+`None` rather than an exception, because the usual reason is ordinary: the retention window
+passed and the blob was pruned, or the text held something that looked like a credential and
+was therefore never written down.
+
+## Worked example: a LiteLLM callback
+
+```python
+import litellm
+from tokunseba import compress
+
+def before_call(kwargs, *_):
+    body = {"model": kwargs["model"], "messages": kwargs["messages"]}
+    out = compress(body, protocol="openai", session_id=kwargs.get("litellm_call_id", ""))
+    kwargs["messages"] = out.body["messages"]
+
+litellm.input_callback = [before_call]
+```
+
+## Worked example: an ASGI middleware
+
+```python
+import json
+from tokunseba import compress
+
+class Shrink:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope["path"].endswith("/messages"):
+            return await self.app(scope, receive, send)
+
+        body = b""
+        while True:
+            msg = await receive()
+            body += msg.get("body", b"")
+            if not msg.get("more_body"):
+                break
+
+        out = compress(json.loads(body), protocol="anthropic")
+        shrunk = json.dumps(out.body).encode()
+
+        async def replay():
+            return {"type": "http.request", "body": shrunk, "more_body": False}
+
+        await self.app(scope, replay, send)
+```
+
+## Keeping test data out of your real history
+
+```python
+shrink(text, path="a.py", home="/tmp/scratch")
+expand(handle, home="/tmp/scratch")
+```
+
+Or set `TOKUNSEBA_HOME` for the whole process.

@@ -1,0 +1,101 @@
+---
+title: Reports
+description: stats, top, report, and what each is for.
+---
+
+Everything is counted in **tokens, ratios and time**. Those mean the same thing whatever kind
+of access you have and whoever you have it from, so tokunseba reports nothing else and asks
+you to configure no rate table to read its own output.
+
+## status
+
+```bash
+tokunseba status
+```
+
+The smallest answer: is it running, and what happened today.
+
+## stats
+
+```bash
+tokunseba stats
+tokunseba stats --since 30d
+tokunseba stats --project ~/work/api
+tokunseba stats --json
+tokunseba stats --ab
+```
+
+Tokens kept off the wire, by tool, with every signal the proxy logged.
+
+`--ab` compares the tier 3 control and treatment arms: requests per session, input and output
+tokens per session, latency per request. This is the only figure that is about your traffic
+rather than someone else's, and it is the one worth trusting.
+
+## top
+
+```bash
+tokunseba top
+tokunseba top --since 24h --limit 30
+```
+
+Where the tokens went. Two tables:
+
+- **The biggest reductions.** Transform kind, before, after, and the handle that holds the
+  original.
+- **The largest passthroughs.** What could not be reduced, and roughly why. This table is
+  deliberately as prominent as the first one.
+
+## report
+
+```bash
+tokunseba report
+tokunseba report --since 30d
+tokunseba report --project ~/work/api
+tokunseba report --json
+tokunseba report --save report.txt
+```
+
+The whole window on one page:
+
+- tokens kept off the wire per day and per hour
+- where the compressible mass is, by tool-result size
+- transforms by kind
+- savings by tool and by model
+- the biggest untouched blocks
+- every signal with an explanation of what it means
+- what you asked about, by domain and by difficulty
+- context growth across the newest session
+
+## explain and expand
+
+```bash
+tokunseba explain <request-id>
+tokunseba expand <handle>
+```
+
+One request, original beside replacement, block by block. Then the full original text behind
+any handle. See [Handles and recovery](/docs/pipeline/recovery).
+
+## advise
+
+```bash
+tokunseba advise --since 30d --to claude-haiku-4-5
+```
+
+Runs the judge offline over conversations that already happened and reports what your prompts
+looked like and what routing them would have moved. It sends nothing, adds no latency and
+cannot change an answer.
+
+It ends with a plain statement of where the judge is reliable on your machine and where it is
+not, which is more useful than the numbers above it.
+
+## History
+
+```bash
+tokunseba retention show      # the window, and how much is actually stored
+tokunseba retention keep 1y   # 24h, 30d, 6w, 6m, 1y, or forever
+tokunseba prune --days 30     # delete everything older than that, now
+```
+
+Default is 90 days for the ledger and 14 days for stored request bodies, pruned
+automatically once a day. See [Retention](/docs/reference/retention).

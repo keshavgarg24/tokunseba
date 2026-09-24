@@ -1,0 +1,14 @@
+{
+  "title": "What it does",
+  "pages": [
+    "how-it-works",
+    "tiers",
+    "reading-files",
+    "tool-output",
+    "repeats",
+    "prompt-cache",
+    "recovery",
+    "safety"
+  ],
+  "defaultOpen": true
+}

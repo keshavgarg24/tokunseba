@@ -1,0 +1,134 @@
+---
+title: How it works
+description: What happens to a request between your tool and the provider.
+---
+
+## The shape of it
+
+Your tool thinks it is talking to `api.anthropic.com`. It is talking to `127.0.0.1:7777`.
+tokunseba parses the request into a shape it understands, decides what to do with it,
+rewrites it, forwards it to the real provider, and passes the reply back untouched.
+
+```
+  your tool  ->  127.0.0.1:7777  ->  the provider your tool chose
+                       |
+                       +-- ledger (sqlite, local)
+                       +-- blobs (the originals, local)
+```
+
+Four protocols are understood: Anthropic Messages, OpenAI chat completions, Gemini, and
+Ollama. Each gets its own path prefix on the proxy, so one process serves all of them.
+
+## Two rules that govern everything
+
+**Only content that is new in this request is ever transformed.** History that has already
+been sent is forwarded byte for byte, because a prompt cache matches on an exact byte prefix
+and breaking one wastes roughly ten times what the compression saved. See
+[The prompt cache](/docs/pipeline/prompt-cache).
+
+**A given original always produces the same replacement, forever.** Every transformation is
+stored keyed by the hash of its input. The same bytes going in produce the same bytes coming
+out, this week and next month, so re-sent history stays identical.
+
+## What is eligible
+
+Only **tool results** are ever rewritten. That means the output of a file read, a shell
+command, a search, a database query: text a program produced and handed to the model.
+
+Never rewritten, under any setting:
+
+- what you typed
+- the system prompt
+- the assistant's own replies
+- tool *calls* (the arguments the model chose)
+
+A question that happens to contain code is still a question.
+
+## The decision, in order
+
+For each new tool result, the pipeline tries these in order and takes the first that fits and
+is genuinely smaller:
+
+<Steps>
+<Step>
+### Canonicalise
+
+Lossless. Terminal escape codes, carriage-return redraws and progress-bar spam are removed.
+Nothing that carries meaning is touched. Recorded as `canonical`.
+</Step>
+
+<Step>
+### Recognise junk
+
+A lock file, a minified bundle, a binary blob. These carry no information a model can use, so
+they become one line describing what they were. Recorded as `junk:<kind>`.
+</Step>
+
+<Step>
+### Point at an earlier copy
+
+If this exact text was already sent in this conversation, it becomes a reference to the
+first copy, but only when the reference is genuinely smaller than the text it replaces.
+Recorded as `dedup_ref`.
+</Step>
+
+<Step>
+### Send only the change
+
+If this is a file that was read before and has changed since, it becomes the diff since the
+model last saw it. Recorded as `diff_ref`.
+</Step>
+
+<Step>
+### Outline the source
+
+If it is a source file, the function bodies are folded and everything that names something is
+kept. Recorded as `outline:<language>`. See [Reading files](/docs/pipeline/reading-files).
+</Step>
+
+<Step>
+### Summarise the output
+
+If it is a test run, a build, an install, a stack trace or a directory listing, it is reduced
+to its structure: what failed, the assertion text, the counts. Recorded as
+`summary:<kind>`. See [Program output](/docs/pipeline/tool-output).
+</Step>
+
+<Step>
+### Re-encode it
+
+If a smaller encoding exists for this shape of data and the tokenizer agrees it is actually
+smaller, it is used. Recorded as `encoding:<kind>`.
+</Step>
+
+<Step>
+### Keep the head and the tail
+
+The last resort. The first N lines and the last M lines survive, with a marker between them
+naming what is missing. Recorded as `truncate`.
+</Step>
+</Steps>
+
+If none of them fit, the text is forwarded exactly as it arrived and recorded as
+`passthrough`. Those show up in `tokunseba top` under "what could not be helped", which is
+deliberately as visible as the savings.
+
+## Everything keeps a handle
+
+Every step that removes anything stores the original in `~/.tokunseba/blobs`, keyed by
+content hash, and puts the handle into the replacement text. The model can ask for it, you
+can ask for it, and an MCP-connected agent can ask for it:
+
+```bash
+tokunseba expand h_4b91c07e
+```
+
+The one exception: if the text contains something that looks like a credential, it is not
+written to disk at all, and the marker says so instead of naming a handle that does not
+exist.
+
+## If anything goes wrong
+
+Any unhandled error inside tokunseba results in your request being forwarded exactly as your
+tool sent it, and a `passthrough_after_error` event being recorded. Optimising a request is
+never worth failing it.

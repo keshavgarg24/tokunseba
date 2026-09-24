@@ -1,0 +1,11 @@
+{
+  "title": "Reference",
+  "pages": [
+    "commands",
+    "configuration",
+    "replay",
+    "retention",
+    "troubleshooting"
+  ],
+  "defaultOpen": true
+}

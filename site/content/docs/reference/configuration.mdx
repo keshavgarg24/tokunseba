@@ -1,0 +1,191 @@
+---
+title: Configuration
+description: Every key in config.toml, what it does, and what it defaults to.
+---
+
+```bash
+tokunseba config show              # print the file, and its path
+tokunseba config show --path-only  # just the path
+tokunseba config set tiers.tier3 true
+```
+
+The file lives at `~/.tokunseba/config.toml` and is plain TOML. Editing it by hand is fine;
+`tokunseba restart` picks up the change.
+
+`config set` validates the key against the known schema, so a typo is refused rather than
+silently written into a section nothing reads.
+
+## proxy
+
+```toml
+[proxy]
+port = 7777
+store_bodies = true
+cache_ttl = ""
+```
+
+| Key | Default | What it does |
+|---|---|---|
+| `port` | `7777` | The loopback port the proxy listens on |
+| `store_bodies` | `true` | Keep whole request bodies, which is what `explain` and `replay` read. Turn off to store less |
+| `cache_ttl` | `""` | Ask for a longer prompt-cache lifetime, e.g. `1h`. Off by default because the trade only pays for a particular rhythm of work |
+
+## tiers
+
+```toml
+[tiers]
+lossless = true
+reach_preserving = true
+tier3 = false
+```
+
+| Key | Default | Tier |
+|---|---|---|
+| `lossless` | `true` | Tier 1, reversible |
+| `reach_preserving` | `true` | Tier 2, reach preserving |
+| `tier3` | `false` | Tier 3, opt in |
+
+Prefer `tokunseba tier enable 3` over setting this directly. The command tells you what the
+tier is permitted to change before it changes anything.
+
+## tier3
+
+```toml
+[tier3]
+effort_routing = false
+model_routing = false
+local_routing = false
+redact_secrets = false
+annotate_injections = false
+local_model = ""
+rules = []
+
+[tier3.model_map]
+```
+
+Nothing here is on merely because `tiers.tier3` is on.
+
+| Key | Default | What it does |
+|---|---|---|
+| `effort_routing` | `false` | Lower the reasoning effort on a turn that does not need it |
+| `model_routing` | `false` | Swap one model for another on the same upstream, via `model_map` |
+| `local_routing` | `false` | Send easy `chitchat` and `writing` turns to `local_model` |
+| `redact_secrets` | `false` | Replace credentials before the request leaves this machine |
+| `annotate_injections` | `false` | Label tool results that look like they are addressing the assistant |
+| `local_model` | `""` | Which model the local upstream should be asked for |
+| `rules` | `[]` | Routing rules. Manage with `tokunseba route`, not by hand |
+| `model_map` | `{}` | `from-model = "to-model"` pairs for `model_routing` |
+
+## judge
+
+```toml
+[judge]
+enabled = false
+backends = ["rules", "laya"]
+laya_model = "convaiinnovations/laya"
+laya_device = "auto"
+gate_threshold = 0.8
+timeout = 5.0
+inline = false
+warm = false
+```
+
+| Key | Default | What it does |
+|---|---|---|
+| `enabled` | `false` | Whether the local judge model may be used |
+| `backends` | `rules, laya` | Tried in order; the first available and confident one wins |
+| `laya_model` | `convaiinnovations/laya` | Which weights to fetch |
+| `laya_device` | `auto` | `cpu`, `mps`, `cuda`, or pick the best available |
+| `gate_threshold` | `0.8` | A signal below this is discarded entirely |
+| `timeout` | `5.0` | Seconds before the judge is treated as unsure |
+| `inline` | `false` | Judge on the request path rather than beside it |
+| `warm` | `false` | Load the weights at proxy startup rather than on first use |
+
+`gate_threshold` is the single most consequential number here. See
+[The judge](/docs/routing/judge).
+
+## thresholds
+
+```toml
+[thresholds]
+truncate_lines = 300
+truncate_tokens = 6000
+cache_min_tokens = 1024
+local_truncate_tokens = 1500
+```
+
+| Key | Default | What it does |
+|---|---|---|
+| `truncate_lines` | `300` | Lines kept when nothing better applies |
+| `truncate_tokens` | `6000` | Token budget for the same |
+| `cache_min_tokens` | `1024` | Smallest prefix worth adding a cache breakpoint to |
+| `local_truncate_tokens` | `1500` | A tighter budget when the destination is a local model with a smaller window |
+
+Try a change before committing to it:
+
+```bash
+tokunseba replay --since 7d --set thresholds.truncate_lines=120
+```
+
+## retention
+
+```toml
+[retention]
+days = 90
+auto_prune = true
+keep_bodies_days = 14
+```
+
+See [Retention](/docs/reference/retention). Prefer `tokunseba retention keep`.
+
+## budget
+
+```toml
+[budget]
+daily_tokens = 0
+hard_stop = false
+```
+
+| Key | Default | What it does |
+|---|---|---|
+| `daily_tokens` | `0` | A daily token ceiling. `0` means no ceiling |
+| `hard_stop` | `false` | Refuse requests past the ceiling rather than only recording `budget_exceeded` |
+
+## upstreams
+
+```toml
+[upstreams.anthropic]
+base_url = "https://api.anthropic.com"
+kind = "anthropic"
+
+[upstreams.ollama]
+base_url = "http://127.0.0.1:11434"
+kind = "ollama"
+```
+
+`kind` is one of `anthropic`, `openai`, `gemini`, `ollama`, and decides which protocol the
+endpoint speaks. Anything OpenAI-compatible uses `openai`.
+
+Manage these with `tokunseba models add` and `tokunseba models rm`, which guess the kind from
+the URL and probe the endpoint before saving it. `config set` deliberately does not accept
+upstream URLs: changing where requests go is not a knob a typo should be able to turn.
+
+## failover
+
+```toml
+[failover]
+enabled = false
+
+[failover.routes]
+```
+
+When the upstream fails, retry the same model somewhere else. Records `failover_used`. Off by
+default.
+
+## Environment variables
+
+| Variable | What it does |
+|---|---|
+| `TOKUNSEBA_HOME` | Where everything lives. Default `~/.tokunseba` |
+| `TOKUNSEBA_NO_SESSION_ENV` | Do not read or write login-session variables |
+| `TOKUNSEBA_NO_WARM` | Never load the judge at startup, whatever the config says |

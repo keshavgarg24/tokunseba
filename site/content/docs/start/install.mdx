@@ -1,0 +1,126 @@
+---
+title: Installation
+description: What it needs, what it writes, and how to take it all back.
+---
+
+## Requirements
+
+| | |
+|---|---|
+| Python | 3.12, 3.13 or 3.14 |
+| Operating system | macOS, Linux, Windows |
+| Disk | about 40 MB, plus whatever your own history grows to |
+| Network | none, beyond the provider calls your tools were already making |
+
+Nothing else is required. The optional local judge model is a separate download you have to
+ask for by name, and it is covered in [The judge](/docs/routing/judge).
+
+## Install
+
+```bash tab="uv"
+uv tool install tokunseba
+```
+
+```bash tab="pipx"
+pipx install tokunseba
+```
+
+```bash tab="pip"
+pip install tokunseba
+```
+
+`uv tool install` is the recommended one: it puts `tokunseba` on your path in its own
+environment, so it cannot collide with the packages your projects depend on.
+
+### Optional extras
+
+```bash
+uv tool install "tokunseba[mcp]"    # the MCP server, for agents with no shell
+uv tool install "tokunseba[laya]"   # the local judge model
+```
+
+<Callout type="warn">
+The `laya` extra pulls in PyTorch and, on first use, downloads about 808 MB of weights and
+holds roughly 2.2 GB of resident memory. Nothing downloads until you run
+`tokunseba judge enable`, and `tokunseba judge remove` deletes it again. Do not install this
+extra unless you have read [The judge](/docs/routing/judge) and want it.
+</Callout>
+
+## Set it up
+
+```bash
+tokunseba init
+```
+
+`init` does five things and prints each one before doing it:
+
+1. **Finds the AI tools installed on this machine.** Claude Code, Codex CLI, Aider, and the
+   shell-exported base URLs that OpenAI and Anthropic SDK clients read.
+2. **Backs up every file it is about to touch** into `~/.tokunseba/backups`.
+3. **Points each tool at the proxy**, by editing its settings file or by adding a block to
+   your shell profile.
+4. **Installs a background service** so the proxy comes back after a reboot. A launchd agent
+   on macOS, a systemd user unit on Linux. Windows has neither, so there it tells you to run
+   `tokunseba start --foreground` instead.
+5. **Starts the proxy** on `127.0.0.1:7777`.
+
+To see exactly what it would do without doing any of it:
+
+```bash
+tokunseba init --dry-run
+```
+
+<Callout>
+Open a new terminal afterwards. The shell block only runs when a shell starts, so the
+terminal you ran `init` in will not have picked it up.
+</Callout>
+
+### Options
+
+| Flag | What it does |
+|---|---|
+| `--dry-run` | Print every change and stop. Writes nothing. |
+| `--no-service` | Do not install the background service. You start the proxy yourself. |
+| `--no-hooks` | Do not register the Claude Code hooks. |
+| `--with-mcp` | Also register the MCP `expand` tool. Only needed for agents with no shell; it costs one background process per session. |
+| `-y`, `--yes` | Do not ask. For scripts and container images. |
+
+## Applications you open from the Dock
+
+If you start your AI tool from the Dock, Spotlight, or a desktop menu rather than by typing
+its name, it is not started by a shell and never reads your shell profile. It will keep going
+straight to the provider and every report will read zero.
+
+```bash
+tokunseba apps on
+```
+
+This sets the variables at the login-session level so that GUI-launched processes inherit
+them. It prints exactly what it will change, asks first, and changes nothing if you say no.
+`tokunseba apps off` removes it. See [Applications from the Dock](/docs/using/gui-apps).
+
+## Where it keeps things
+
+Everything lives in `~/.tokunseba`:
+
+| Path | What it is |
+|---|---|
+| `config.toml` | Every setting. Readable and editable by hand. |
+| `ledger.sqlite` | The record of every request, transform, event and session. |
+| `blobs/` | The original text behind every handle. |
+| `bodies/` | Stored request bodies, used by `explain` and `replay`. |
+| `backups/` | A copy of every file `init` touched, before it touched it. |
+| `logs/` | The proxy's own log. |
+
+Set `TOKUNSEBA_HOME` to put that somewhere else.
+
+## Taking it back
+
+```bash
+tokunseba off          # restore every tool's original config, keep the data
+tokunseba uninstall    # also remove the background service
+```
+
+`off` restores each file from the backup made at `init` time. Your history stays in
+`~/.tokunseba` until you delete that directory yourself, which `uninstall` deliberately does
+not do for you.

@@ -1,0 +1,54 @@
+---
+title: Reasoning effort
+description: Spending less thinking on a turn that does not need any.
+---
+
+Separate from which model answers is **how hard that model thinks**. A tool-resumption turn,
+where the model asked for a file and is now being handed it, rarely needs extended reasoning.
+A new question, or a turn that follows an error, usually does.
+
+```bash
+tokunseba tier enable 3
+tokunseba config set tier3.effort_routing true
+```
+
+## What it changes
+
+| Provider | Field |
+|---|---|
+| OpenAI shaped | `reasoning_effort` |
+| Anthropic | `thinking.budget_tokens` |
+
+The turn is otherwise untouched. No text is rewritten, no model is swapped.
+
+## When it fires
+
+Only when all of these hold:
+
+- tier 3 is on and `tier3.effort_routing` is on
+- the judge scored the turn as easy, above the confidence gate
+- the turn is not sensitive
+- the request did not already specify an effort setting of its own
+
+If the client asked for a specific thinking budget, that is a decision the client made and
+tokunseba leaves it alone.
+
+## Seeing it
+
+```
+effort_set   23   an easy turn was sent at low effort
+```
+
+```bash
+tokunseba stats --since 7d
+```
+
+Because this is tier 3, sessions are split into control and treatment arms, so:
+
+```bash
+tokunseba stats --ab
+```
+
+will tell you whether the treatment arm actually finished tasks in fewer requests or more.
+That is the number that matters: a turn that thinks less and then needs two more turns has
+not helped.

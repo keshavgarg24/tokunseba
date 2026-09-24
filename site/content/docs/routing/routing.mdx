@@ -1,0 +1,138 @@
+---
+title: Prompt-driven routing
+description: Reading the opening prompt and deciding which model should answer it.
+---
+
+<Callout type="warn">
+Routing is tier 3. It is the only thing tokunseba does that can change the answer you get,
+and it is off until you turn it on.
+</Callout>
+
+## The idea
+
+A coding agent speaks one protocol to everything it talks to, so the strongest model you
+have configured handles `looks good, commit it` with exactly the same machinery as the turns
+that are genuinely hard.
+
+tokunseba reads the **opening prompt of a conversation**, labels its domain and difficulty,
+and sends the turn wherever you said turns like that should go.
+
+```bash
+tokunseba models add deepseek https://api.deepseek.com
+tokunseba route add --domain chitchat --to deepseek --model deepseek-chat
+tokunseba route enable
+```
+
+## Only the first turn
+
+Routing happens on turn one of a conversation and never again. Switching model mid-thread
+forfeits the prompt cache, and on some models it invalidates the reasoning blocks bound to
+the model that produced them.
+
+So once a conversation has started with a model, it finishes with that model. This is a
+deliberate limit, not an unimplemented feature.
+
+## What the judge reads
+
+| Signal | Values |
+|---|---|
+| `domain` | `code`, `math_or_logic`, `writing`, `factual_lookup`, `data_analysis`, `chitchat` |
+| `difficulty` | 0 trivial, 1 easy, 2 moderate, 3 hard |
+| `needs_tools` | whether the turn needs files, search or private data |
+| `is_sensitive` | finance, law, medicine, security |
+
+Each comes with a confidence. **A signal below `judge.gate_threshold` (0.8 by default) is
+discarded entirely**, so an unsure read matches nothing and the turn keeps the model it
+arrived with.
+
+## Rules
+
+```bash
+tokunseba route add --domain devops --to ollama --model qwen3-coder:30b
+tokunseba route add --max-difficulty 1 --to deepseek --model deepseek-chat
+tokunseba route add --needs-tools no --model claude-haiku-4-5
+tokunseba route                  # list them, in order
+tokunseba route rm 2             # remove one
+tokunseba route clear            # remove all
+```
+
+Rules are tried **in order and the first match wins**. Every condition on a rule must be met.
+
+| Flag | Meaning |
+|---|---|
+| `--domain NAME` | Only turns the judge put in this domain |
+| `--max-difficulty N` | Only turns at or below this difficulty, 0 to 3 |
+| `--needs-tools yes\|no` | Only turns that do, or do not, need tools |
+| `--to NAME` | Which upstream to send to. Omit to keep the upstream and only change the model |
+| `--model ID` | Which model to ask for instead |
+
+<Callout>
+A rule with no conditions never matches. Routing everything unconditionally is something you
+could ask for by accident and would never ask for on purpose.
+</Callout>
+
+## Checking a rule before trusting it
+
+```bash
+tokunseba route test "bump the docker base image"
+```
+
+```ansi
+ signal        answer      confidence
+ domain        devops            0.88  above the gate
+ difficulty    1 easy            0.45  below 0.8, discarded
+ needs_tools   yes               0.91  above the gate
+ sensitive     no
+
+Matches: domain=devops -> ollama / qwen3-coder:30b
+It arrives as anthropic, so the request is translated to ollama on the way out
+and the reply is translated back. The client sees no difference.
+```
+
+This sends nothing anywhere. It is the command to reach for before `route enable`.
+
+## What bounds it
+
+1. **First turn only.** Never mid-conversation.
+2. **A signal below the gate is discarded.** An unsure judge changes nothing.
+3. **A rule with no conditions never fires.**
+4. **A sensitive turn is never routed down.** Anything the judge flags as finance, law,
+   medicine or security keeps the model it arrived with, under every setting.
+5. **An unreachable pair is refused, not attempted.** If the target upstream does not exist,
+   or the protocols cannot be translated between, the turn is left alone and a
+   `route_refused` event is recorded.
+6. **Everything is measured.** Sessions are split into control and treatment arms;
+   `tokunseba stats --ab` compares them.
+
+## How often it actually fires
+
+Less often than you might expect, on purpose.
+
+The shipped rules judge is deliberately lopsided: being wrong about "this is hard" changes
+nothing, and being wrong about "this is easy" sends real work to a model that cannot do it.
+So the difficulty gate sits above where most ordinary coding prompts land. Measured against
+the shipped rules at the default threshold:
+
+| Prompt | Difficulty confidence | Routed |
+|---|---|---|
+| `fix the typo in the header comment` | 0.45 | no |
+| `rename this variable to userId` | 0.45 | no |
+| `refactor the auth module to use async` | 0.70 | no |
+| `why is the expiry test failing` | 0.45 | no |
+
+Three things change that, in increasing order of how much you are trusting:
+
+1. Lower the gate: `tokunseba config set judge.gate_threshold 0.6`
+2. Write rules on `--domain` rather than `--max-difficulty`. Domain is the signal the rules
+   are confident about.
+3. Enable the [local judge](/docs/routing/judge), which reads the prompt rather than matching
+   patterns in it.
+
+Before any of that, run:
+
+```bash
+tokunseba advise
+```
+
+which tells you, from your own recorded history, how many conversations would actually have
+moved and how much context they were carrying.

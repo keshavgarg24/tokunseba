@@ -1,0 +1,62 @@
+---
+title: MCP server
+description: Letting an agent with no shell ask for the original text.
+---
+
+Every substitution names a handle, and the marker text spells out `tokunseba expand <handle>`
+so an agent that can run shell commands can recover the original itself.
+
+An agent that **cannot** run shell commands needs another way, and that is what this is for.
+
+## Install and register
+
+```bash
+uv tool install "tokunseba[mcp]"
+tokunseba init --with-mcp
+```
+
+Or add it to an existing setup by hand. The server speaks MCP over stdio:
+
+```bash
+tokunseba mcp
+```
+
+## What it exposes
+
+One tool:
+
+| Tool | Argument | Returns |
+|---|---|---|
+| `expand` | `handle` | The original text behind that handle, byte for byte |
+
+That is the whole surface. It does not expose the ledger, your configuration, your history,
+or anything that could change what the proxy does. It reads one blob and returns it.
+
+## Why it is opt in
+
+`--with-mcp` costs one background process per agent session. For an agent that has a shell,
+which is most coding agents, the shell path is strictly better: no extra process, no extra
+configuration, and the command is already written in the text the model is reading.
+
+Turn it on when the agent genuinely has no way to run a command.
+
+## Configuring it manually
+
+For a client that reads an MCP config file:
+
+```json
+{
+  "mcpServers": {
+    "tokunseba": {
+      "command": "tokunseba",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+## If a handle is gone
+
+The tool returns a message saying so rather than an error, with the reason: either the
+retention window passed, or the text contained something that looked like a credential and
+was never written to disk. See [Handles and recovery](/docs/pipeline/recovery).

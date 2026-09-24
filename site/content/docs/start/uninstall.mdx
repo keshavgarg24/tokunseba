@@ -1,0 +1,58 @@
+---
+title: Removing it
+description: Putting every file back the way it was.
+---
+
+## Stop using it, keep the history
+
+```bash
+tokunseba off
+```
+
+Restores every tool's original configuration from the backup that `init` made before it
+touched anything. Your tools go straight to their providers again, immediately. The proxy
+keeps running but stops being used.
+
+This also clears the login-session variables set by `tokunseba apps on`.
+
+## Remove the background service too
+
+```bash
+tokunseba uninstall
+```
+
+Does everything `off` does, and also removes the launchd agent or systemd user unit, so
+nothing restarts the proxy at login.
+
+It deliberately does **not** delete `~/.tokunseba`. Your ledger, your blobs and your backups
+are yours. It prints the path and leaves the decision to you:
+
+```bash
+rm -rf ~/.tokunseba
+```
+
+## Remove the package
+
+```bash
+uv tool uninstall tokunseba
+```
+
+## Just turn parts of it off
+
+You may not want all of this. Each of these is independent:
+
+```bash
+tokunseba tier disable 2        # stop summarising and outlining
+tokunseba route disable         # stop routing, keep the rules
+tokunseba judge disable         # stop using the local judge model
+tokunseba judge remove          # and delete its weights from disk
+tokunseba retention keep 24h    # keep almost no history
+tokunseba apps off              # stop routing GUI applications
+```
+
+## What a restore actually restores
+
+`init` writes a copy of every file into `~/.tokunseba/backups` before editing it, named by
+its original path. `off` copies those back. If you have edited one of those files yourself
+since `init` ran, the restore will overwrite your edit, so check the backup directory first
+if that matters to you.

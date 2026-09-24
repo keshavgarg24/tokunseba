@@ -1,0 +1,90 @@
+---
+title: The dashboard
+description: In the terminal, or in a browser served from your own machine.
+---
+
+## In the terminal
+
+```bash
+tokunseba ui              # draw it once
+tokunseba watch           # redraw every two seconds until Ctrl-C
+tokunseba ui --since 30d  # a different window
+```
+
+This needs no browser, no port and no window, which matters when the machine you are working
+on is reached over ssh. It is the default surface and it is not going away.
+
+## In a browser
+
+```bash
+tokunseba dashboard
+```
+
+Serves one page off `127.0.0.1` on a port the operating system picks, and opens it. It
+refreshes itself every few seconds and stops polling when the tab is hidden.
+
+| Flag | What it does |
+|---|---|
+| `--port N` | Bind this port instead of asking for a free one |
+| `--no-open` | Print the address instead of opening a browser |
+| `--print-url` | Print the address of the already-running proxy's copy and exit |
+
+If the proxy is already running, the same page is at `http://127.0.0.1:7777/_tokunseba/`,
+and `--print-url` will tell you so rather than starting a second server.
+
+## What is on it
+
+| Section | What it tells you |
+|---|---|
+| Header | Tokens never sent, the percentage that is, and the window |
+| Tiles | Sent upstream, fresh tokens, replies, substitutions, models, provider time |
+| Chart | Tokens never sent, per day, for the last fortnight |
+| By tool | Which client sent the traffic, and what was kept off the wire for each |
+| Models seen | What actually answered, through which upstream, and when |
+| Biggest reductions | What the tokens were spent on, and the handle for each |
+| Largest passthroughs | What nothing could be done about, which is as visible as the savings |
+| Judge | What it made of your opening prompts, by domain and difficulty |
+| Signals | Every decision the proxy logged |
+| Conversations | Recent sessions, their tool, project, model and arm |
+
+## Three things it enforces
+
+These are properties of the code, not promises in a document.
+
+<Steps>
+<Step>
+### It binds the loopback address
+
+The socket is opened on `127.0.0.1` and on a port the operating system hands out. Nothing
+outside this machine can reach it.
+</Step>
+
+<Step>
+### It checks the name it was asked by
+
+Every request is compared against the `Host` header it arrived with. This is what stops a
+page you happened to be visiting from reaching in by pointing a hostname at `127.0.0.1`.
+Same-origin rules do not cover that case, because by the time the request is made the
+attacker's page and the rebound address share an origin.
+</Step>
+
+<Step>
+### It fetches nothing from the internet
+
+One file, no font host, no script CDN, no beacon, no analytics. Pull the network cable out
+and it still renders. A test asserts this against the bytes on disk rather than trusting a
+comment above them.
+</Step>
+</Steps>
+
+## The status line
+
+For an editor or a coding tool that can display one:
+
+```bash
+tokunseba statusline
+```
+
+Reads the host tool's JSON event on stdin and prints one line: whether the proxy is in the
+path, the context you are carrying, and what has been kept off the wire today. Claude Code
+picks this up automatically if `tokunseba init` registered the hooks.

@@ -1,0 +1,51 @@
+---
+title: Hooks and the status line
+description: What tokunseba registers in Claude Code, and what it deliberately does not.
+---
+
+## The status line
+
+```bash
+tokunseba statusline
+```
+
+Reads the host tool's JSON event on stdin and prints one line: whether the proxy is in the
+path, the context this session is carrying, and what has been kept off the wire today.
+
+`tokunseba init` registers it with Claude Code automatically. `init --no-hooks` skips that.
+
+## Hooks
+
+```bash
+tokunseba hook claude-code
+```
+
+The hook entry point, invoked by the host tool with a JSON event on stdin. It is used for
+session bookkeeping: recording which working directory a session belongs to, so reports can
+be grouped by project, and noticing when a session starts so the A/B arm can be drawn once.
+
+## What it deliberately does not do
+
+**It does not rewrite your shell commands.**
+
+Claude Code's documented way for a hook to modify a tool's input also requires
+auto-approving that input. Using it would mean tokunseba silently bypassing your own
+permission prompt for a command it had just edited. That is not a trade worth making for
+token savings.
+
+If you want a command's output compressed, run it explicitly:
+
+```bash
+tokunseba run -- pytest -q
+```
+
+or tell your agent to. The output arrives compressed, with a handle, and your permission
+prompt still happened for the command you actually approved.
+
+## Removing them
+
+`tokunseba off` restores the settings file from the backup made at `init` time, which removes
+the hooks and the status line along with everything else.
+
+To keep the proxy but drop the hooks, run `tokunseba off` and then re-run
+`tokunseba init --no-hooks`.

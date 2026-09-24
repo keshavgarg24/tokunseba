@@ -1,0 +1,96 @@
+---
+title: Replay
+description: Trying a setting against traffic you have already recorded.
+---
+
+Every setting comes with the same question, and no documentation can answer it: what would
+this have done to **my** work? A number measured on somebody else's repository is not an
+answer.
+
+```bash
+tokunseba replay --since 7d --tier 2
+```
+
+```ansi
+312 requests replayed under tier 2.
+                    tokens removed
+as it ran                  1.41M
+as configured here         2.08M
+difference                  +674k
+
+transform        blocks
+outline:python       46
+outline:ts           18
+summary:pytest       31
+
+84 of 312 requests would come out different.
+```
+
+## What it does
+
+Re-runs traffic that already happened under a configuration you have not committed to, from
+the request bodies already on disk.
+
+- **Nothing is sent anywhere.** No provider is contacted. There is no network involved at
+  all.
+- **Nothing of yours is written.** The replay gets its own ledger and its own blob store in a
+  temporary directory, which is deleted when it finishes. It cannot leave behind a handle, an
+  event, a frozen replacement, or a learned token ratio.
+
+## Options
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--since` | `7d` | How far back to pull requests from |
+| `--limit` | `500` | Most recent requests to replay |
+| `--tier N` | — | Replay as though only these tiers were on. Repeatable |
+| `--set KEY=VALUE` | — | Override one setting for the replay only. Repeatable |
+| `--verbose` | — | List the request ids that would change |
+
+```bash
+tokunseba replay --tier 1 --tier 2
+tokunseba replay --set thresholds.truncate_lines=120
+tokunseba replay --set thresholds.truncate_tokens=3000 --verbose
+```
+
+`--verbose` gives you request ids, so you can read any one of them in full:
+
+```bash
+tokunseba explain 1f4c9a20e8bb
+```
+
+## Reading the baseline honestly
+
+With nothing overridden, the two rows will usually still differ, and the output says why.
+
+A turn whose earlier identical copy falls outside `--since` or `--limit` has nothing to refer
+back to inside the window, so it gets summarised instead of deduplicated, and removes less.
+That is the window talking, not the configuration.
+
+**Compare two runs of `--set` against each other** rather than against a baseline of zero.
+
+## What is not replayed
+
+Tier 3 is deliberately out of scope. It decides which model answers, and no offline pass can
+know what a different model would have said.
+
+For that question:
+
+```bash
+tokunseba advise --since 30d
+```
+
+which judges the opening prompts of conversations you have already had and reports how many
+would have moved.
+
+## What it needs
+
+Replay reads stored request bodies. Those have their own retention window
+(`retention.keep_bodies_days`, 14 days by default) because bodies are the bulkiest thing
+tokunseba stores, and they are not stored at all if `proxy.store_bodies` is off.
+
+```bash
+tokunseba retention show
+```
+
+tells you how far back you can actually replay.

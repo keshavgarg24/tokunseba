@@ -1,0 +1,682 @@
+---
+title: Every command
+description: All 57 of them, what each does and what each option means.
+---
+
+Generated from the command definitions themselves, so it cannot drift from what the tool
+actually accepts. Every command also has `--help`.
+
+```bash
+tokunseba --help
+tokunseba route add --help
+```
+
+## Setting up
+
+Getting the proxy in front of your tools, and taking it back out.
+
+### `tokunseba init`
+
+Point every supported tool at the proxy and start it in the background.
+
+```bash
+tokunseba init [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `--no-service` | — | Do not install the background service. |
+| `--no-hooks` | — | Do not register Claude Code hooks. |
+| `--with-mcp` | — | Register the MCP expand tool. Only needed for agents with no shell; it costs one background process per session. |
+| `-y`, `--yes` | — | Do not ask. For scripts and images. |
+| `--dry-run` | — | Print what it would change and stop. |
+
+### `tokunseba on`
+
+Re-apply the proxy configuration to every tool.
+
+```bash
+tokunseba on
+```
+
+### `tokunseba off`
+
+Restore every tool's original configuration. The proxy stops being used immediately.
+
+```bash
+tokunseba off
+```
+
+### `tokunseba uninstall`
+
+Remove the background service and restore every tool.
+
+```bash
+tokunseba uninstall
+```
+
+### `tokunseba apps status`
+
+Show what an application launched from the Dock would actually connect to.
+
+```bash
+tokunseba apps status
+```
+
+### `tokunseba apps on`
+
+Make Dock-launched applications route through the proxy, after saying how.
+
+```bash
+tokunseba apps on [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `-y`, `--yes` | — | Do not ask for confirmation. |
+
+### `tokunseba apps off`
+
+Stop routing Dock-launched applications. Terminals are not affected.
+
+```bash
+tokunseba apps off
+```
+
+## Running it
+
+The proxy process itself.
+
+### `tokunseba start`
+
+Run the proxy.
+
+```bash
+tokunseba start [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `--foreground` | — | Run in this terminal instead of the background. |
+| `--warm-judge` | — | Load the local judge model at startup. |
+
+### `tokunseba stop`
+
+Stop the background proxy. Tools still pointed at it will fail until it is back.
+
+```bash
+tokunseba stop [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `-y`, `--yes` | — | Do not ask, even if tools are routed. |
+
+### `tokunseba restart`
+
+Stop the background proxy and start it again, so config changes take effect.
+
+```bash
+tokunseba restart
+```
+
+### `tokunseba status`
+
+Show whether the proxy is running and what it saved today.
+
+```bash
+tokunseba status
+```
+
+### `tokunseba doctor`
+
+Check the installation and report anything that would silently cost tokens.
+
+```bash
+tokunseba doctor
+```
+
+### `tokunseba verify`
+
+Prove tokunseba is in the path and saving tokens, with evidence rather than claims.
+
+```bash
+tokunseba verify
+```
+
+## Seeing what happened
+
+Everything the ledger can tell you.
+
+### `tokunseba stats`
+
+Show what tokunseba saved.
+
+```bash
+tokunseba stats [OPTIONS]
+```
+
+Everything is counted in tokens, ratios and time, because those mean the same thing on every kind of access. Nothing here depends on the kind of access you have.
+
+| Option | Default | What it does |
+|---|---|---|
+| `--since` | `7d` | e.g. 24h, 7d, 30d |
+| `--project` | — | Filter to one project directory. |
+| `--ab` | — | Compare the tier 3 control and treatment arms. |
+| `--json` | — | — |
+
+### `tokunseba report`
+
+The whole picture in one page: context, cache, and where the tokens went.
+
+```bash
+tokunseba report [OPTIONS]
+```
+
+Counted in tokens, ratios and time, which is what every kind of access has in common.
+
+| Option | Default | What it does |
+|---|---|---|
+| `--since` | `7d` | e.g. 24h, 7d, 30d |
+| `--project` | — | Filter the request figures to one project directory. |
+| `--json` | — | Print the same numbers as JSON. |
+| `--save` | — | Also write the plain text rendering to PATH. |
+
+### `tokunseba top`
+
+Show where the tokens went: the biggest savings, and what could not be helped.
+
+```bash
+tokunseba top [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `--since` | `7d` | e.g. 24h, 7d, 30d |
+| `--limit` | `15` | Rows per table. |
+
+### `tokunseba ui`
+
+Show the dashboard in this terminal. No browser, ever.
+
+```bash
+tokunseba ui [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `--watch`, `-w` | — | Redraw every 2 seconds until Ctrl-C. |
+| `--since` | `7d` | e.g. 24h, 7d, 30d |
+
+### `tokunseba watch`
+
+Live dashboard. The same as: tokunseba ui --watch
+
+```bash
+tokunseba watch [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `--since` | `7d` | e.g. 24h, 7d, 30d |
+
+### `tokunseba dashboard`
+
+Open the dashboard in a browser. Local only: the page is served off 127.0.0.1.
+
+```bash
+tokunseba dashboard [OPTIONS]
+```
+
+The terminal dashboard (`tokunseba ui`) is still there and still needs nothing. This is for when you want it open on another screen while you work.
+
+| Option | Default | What it does |
+|---|---|---|
+| `--port` | `0` | Bind this port instead of asking the operating system for a free one. |
+| `--no-open` | — | Print the address instead of opening a browser. |
+| `--print-url` | — | Print the address and exit, serving nothing. |
+
+### `tokunseba statusline`
+
+One status line for a coding tool. Reads the tool's JSON on stdin.
+
+```bash
+tokunseba statusline
+```
+
+### `tokunseba explain`
+
+Show exactly what was changed in one request, original beside replacement.
+
+```bash
+tokunseba explain REQUEST-ID
+```
+
+### `tokunseba expand`
+
+Print the full original text behind a handle.
+
+```bash
+tokunseba expand HANDLE
+```
+
+### `tokunseba advise`
+
+Ask the local judge what your prompts looked like, and what routing them would save.
+
+```bash
+tokunseba advise [OPTIONS]
+```
+
+This runs offline over conversations that already happened, so it costs nothing, adds no latency, and cannot change an answer. It is the honest way to find out whether routing by prompt is worth switching on before you switch it on.
+
+| Option | Default | What it does |
+|---|---|---|
+| `--since` | `30d` | — |
+| `--limit` | `100` | Conversations to judge. |
+| `--to` | `claude-sonnet-5` | The smaller model to name as the destination. |
+
+## Deciding how far it goes
+
+The tiers, the rules, and trying a setting first.
+
+### `tokunseba tier status`
+
+Show which tiers are on and what each one is permitted to change.
+
+```bash
+tokunseba tier status
+```
+
+### `tokunseba tier explain`
+
+Say in full what one tier does, what it changes, and what that costs.
+
+```bash
+tokunseba tier explain WHICH
+```
+
+### `tokunseba tier enable`
+
+Turn a tier on, after saying what it will be allowed to change.
+
+```bash
+tokunseba tier enable WHICH [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `-y`, `--yes` | — | Do not ask for confirmation. |
+
+### `tokunseba tier disable`
+
+Turn a tier off. Tokens go up; nothing else about your setup changes.
+
+```bash
+tokunseba tier disable WHICH [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `-y`, `--yes` | — | Do not ask for confirmation. |
+
+### `tokunseba replay`
+
+Re-run recorded traffic under a different configuration, and report the difference.
+
+```bash
+tokunseba replay [OPTIONS]
+```
+
+Nothing is sent anywhere and nothing of yours is written: the replay works from the request bodies already on disk, and its ledger and blob store live in a temporary directory that is deleted when it finishes. It is the way to find out what a setting would do to your own work before committing to it.
+
+Tier 3 is not replayed. It decides which model answers, and no offline pass can know what a different model would have said. Use `tokunseba advise` for that question.
+
+| Option | Default | What it does |
+|---|---|---|
+| `--since` | `7d` | — |
+| `--limit` | `500` | Most recent requests to replay. |
+| `--tier` | — | Replay as though only these tiers were on. Repeatable. |
+| `--set` | — | Override one setting for the replay only, e.g. thresholds.truncate_tokens=3000. Repeatable. |
+| `--verbose` | — | List the requests that would change. |
+
+### `tokunseba config show`
+
+Print the configuration file.
+
+```bash
+tokunseba config show [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `--path-only` | — | — |
+
+### `tokunseba config set`
+
+Set a value, e.g. tokunseba config set tiers.tier3 true
+
+```bash
+tokunseba config set KEY VALUE
+```
+
+## Choosing the model
+
+Endpoints, routing rules, and the judge.
+
+### `tokunseba models list`
+
+Show every configured upstream and every model seen going through them.
+
+```bash
+tokunseba models list [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `--check` | — | Also ask each endpoint whether it answers. Sends no key and no prompt. |
+| `--since` | `7d` | How far back to look for models you actually used. |
+
+### `tokunseba models add`
+
+Add a model endpoint, such as a DeepSeek key or a second ollama host.
+
+```bash
+tokunseba models add NAME BASE-URL [OPTIONS]
+```
+
+Only the address is stored. Keys stay wherever your client already keeps them and are forwarded from the request, so nothing secret is written to disk here.
+
+| Option | Default | What it does |
+|---|---|---|
+| `--kind` | — | Which protocol it speaks. Guessed from the URL when omitted. |
+| `--check`, `--no-check` | `True` | Probe the endpoint before saving it. |
+
+### `tokunseba models rm`
+
+Remove a model endpoint.
+
+```bash
+tokunseba models rm NAME
+```
+
+### `tokunseba models check`
+
+Ask every configured endpoint whether it answers. No key, no prompt, no cost.
+
+```bash
+tokunseba models check
+```
+
+### `tokunseba route status`
+
+Show whether routing is on, which rules exist, and what judges them.
+
+```bash
+tokunseba route status
+```
+
+### `tokunseba route add`
+
+Add a routing rule. Rules are tried in order and the first match wins.
+
+```bash
+tokunseba route add [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `--domain` | — | Only route turns the judge puts in this domain. |
+| `--max-difficulty` | — | Only route turns at or below this difficulty. 0 trivial, 3 hard. |
+| `--needs-tools`, `--no-needs-tools` | — | Only route turns that do, or do not, need files, search or private data. |
+| `--to` | `` | Upstream to send to. Omit to keep the upstream and only change the model. |
+| `--model` | `` | Model id to ask for instead. |
+
+### `tokunseba route rm`
+
+Remove rule number INDEX, as shown by `tokunseba route`.
+
+```bash
+tokunseba route rm INDEX
+```
+
+### `tokunseba route clear`
+
+Remove every routing rule.
+
+```bash
+tokunseba route clear [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `-y`, `--yes` | — | Do not ask for confirmation. |
+
+### `tokunseba route enable`
+
+Let the rules actually change which model answers.
+
+```bash
+tokunseba route enable [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `-y`, `--yes` | — | Do not ask for confirmation. |
+
+### `tokunseba route disable`
+
+Stop routing. Rules are kept, they simply stop firing.
+
+```bash
+tokunseba route disable
+```
+
+### `tokunseba route test`
+
+Judge PROMPT and show where it would go. Sends nothing anywhere.
+
+```bash
+tokunseba route test PROMPT... [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `--provider` | `anthropic` | Pretend the prompt arrived from this kind of client. |
+
+### `tokunseba judge status`
+
+Show whether the judge is on, what it costs here, and what it is used for.
+
+```bash
+tokunseba judge status
+```
+
+### `tokunseba judge enable`
+
+Turn the local judge on, after saying plainly what that costs.
+
+```bash
+tokunseba judge enable [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `--warm` | — | Load the weights when the proxy starts instead of on first use. Costs the memory from startup; saves a one-time pause later. |
+| `--device` | — | Force a device: cpu, mps, cuda. Default picks the best available. |
+| `--download`, `--no-download` | `True` | Fetch the weights now if they are missing. |
+| `-y`, `--yes` | — | Do not ask for confirmation. |
+
+### `tokunseba judge disable`
+
+Turn the local judge off. The memory comes back when the proxy restarts.
+
+```bash
+tokunseba judge disable [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `--purge` | — | Also delete the downloaded weights from disk. |
+
+### `tokunseba judge install`
+
+Download the judge weights so nothing has to wait for them later.
+
+```bash
+tokunseba judge install [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `--force` | — | Download again even if already cached. |
+
+### `tokunseba judge remove`
+
+Delete the downloaded weights and free the disk space.
+
+```bash
+tokunseba judge remove [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `-y`, `--yes` | — | Do not ask for confirmation. |
+
+## Using it without the proxy
+
+One command, one tool, or from Python.
+
+### `tokunseba run`
+
+Run a shell command and print its output already compressed.
+
+```bash
+tokunseba run CMD...
+```
+
+Use it as: tokunseba run -- pytest -q
+
+### `tokunseba wrap`
+
+Run a tool with tokunseba in its environment.
+
+```bash
+tokunseba wrap TOOL ARGS...
+```
+
+This is the reliable way in. Writing a tool's settings file can be overridden by an exported base URL, and several launchers export one. Wrapping sets the variables on the tool's own process, so nothing inherited can win, and it changes nothing on disk.
+
+Examples: tokunseba wrap claude · tokunseba wrap codex -- --model gpt-5
+
+### `tokunseba wrap-any`
+
+Run any command with every tokunseba base URL exported.
+
+```bash
+tokunseba wrap-any COMMAND...
+```
+
+Use it for a tool that is not in the known list, or for a whole shell: tokunseba wrap-any -- zsh
+
+### `tokunseba wrappable`
+
+List the tools tokunseba can run, and which are installed here.
+
+```bash
+tokunseba wrappable
+```
+
+### `tokunseba mcp`
+
+Run the MCP server exposing the expand tool, for agents without a shell.
+
+```bash
+tokunseba mcp
+```
+
+### `tokunseba hook`
+
+Hook entry point. Reads the host tool's JSON event on stdin.
+
+```bash
+tokunseba hook [WHICH]
+```
+
+## History
+
+How long it keeps things, and deleting what is past that.
+
+### `tokunseba retention show`
+
+Show the current window, and how much is actually stored.
+
+```bash
+tokunseba retention show
+```
+
+### `tokunseba retention keep`
+
+Keep history for WINDOW: 24h, 30d, 6w, 6m, 1y, or forever.
+
+```bash
+tokunseba retention keep WINDOW [OPTIONS]
+```
+
+Examples: tokunseba retention keep 1y · tokunseba retention keep forever
+
+| Option | Default | What it does |
+|---|---|---|
+| `--bodies` | — | A shorter window for stored request bodies, which are the bulkiest part. Defaults to 14d. |
+
+### `tokunseba retention auto`
+
+Turn the once-a-day automatic prune on or off.
+
+```bash
+tokunseba retention auto STATE
+```
+
+### `tokunseba retention prune`
+
+Delete everything older than the window, now.
+
+```bash
+tokunseba retention prune [OPTIONS]
+```
+
+| Option | Default | What it does |
+|---|---|---|
+| `--keep` | — | Prune to this window just this once, without changing the setting. |
+
+### `tokunseba prune`
+
+Delete history older than the retention window.
+
+```bash
+tokunseba prune [OPTIONS]
+```
+
+The window itself lives in the config; see and change it with `tokunseba retention`.
+
+| Option | Default | What it does |
+|---|---|---|
+| `--days` | — | Override the configured retention window for this run. |
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | It worked, or there was nothing to do |
+| 1 | It refused, and said why. A missing handle, an unknown key, a declined confirmation |
+| 2 | The command line itself was wrong. Click's own error |
+
+## Environment variables
+
+| Variable | What it does |
+|---|---|
+| `TOKUNSEBA_HOME` | Where the config, ledger, blobs and backups live. Default `~/.tokunseba` |
+| `TOKUNSEBA_NO_SESSION_ENV` | Do not read or write login-session variables. Used by tests and containers |
+| `TOKUNSEBA_NO_WARM` | Never load the local judge at startup, whatever the config says |
+| `TOKUNSEBA_LAYA_SMOKE` | Opt in to the test that downloads and runs the real judge model |
+

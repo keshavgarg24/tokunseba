@@ -1,0 +1,92 @@
+---
+title: Introduction
+description: What tokunseba is, what it changes, and what it refuses to change.
+---
+
+tokunseba is one process on `127.0.0.1` that sits in front of every AI coding tool on your
+machine. It reads each request on the way out, removes what the model has already been told
+without losing a byte of it, and can send the turn to whichever model actually needs to
+answer it, translating between provider protocols when they differ.
+
+It is a command line tool. There is no account, no sign in, no plan, and no telemetry. The
+only outbound traffic is the request your tool was already making, to the provider your tool
+already chose.
+
+```bash
+uv tool install tokunseba
+tokunseba init
+tokunseba doctor
+```
+
+## The problem it exists for
+
+A coding agent reads a file, pastes it into the conversation, reads it again four turns
+later, runs the tests, lists a directory, and carries the entire transcript forward on every
+single call. The question you typed is a few hundred tokens. What surrounds it is tens of
+thousands, and most of that is text the model has already seen or never needed.
+
+That waste is in the request, and it is the same waste in every tool you have installed.
+Fixing it in one place fixes it everywhere.
+
+The other half of the weight is *which* model answers. A coding agent speaks one protocol to
+everything it talks to, so the strongest model you have configured handles `looks good,
+commit it` with exactly the same machinery as the turns that are genuinely hard.
+
+## What it will not do
+
+<Cards>
+  <Card title="Lose information">
+    Everything it removes stays retrievable byte for byte with `tokunseba expand`. Nothing is
+    summarised away without a handle pointing at the original.
+  </Card>
+  <Card title="Change an answer">
+    If tokunseba hits a bug, your original request is forwarded exactly as your tool sent it
+    and the failure is recorded. Optimising a request is never worth failing it.
+  </Card>
+  <Card title="Leave the machine">
+    Binds loopback only. API keys are forwarded from your tool's own headers and never
+    stored. No telemetry, no beacon, no phoning home.
+  </Card>
+  <Card title="Rewrite what you wrote">
+    Only tool results are ever transformed. Your prompts, the assistant's replies and system
+    instructions are forwarded exactly as they arrived, whatever is in them.
+  </Card>
+</Cards>
+
+## Where to go next
+
+<Cards>
+  <Card href="/docs/start/install" title="Installation">
+    What it requires, what it changes, and how to undo all of it.
+  </Card>
+  <Card href="/docs/start/quickstart" title="Quickstart">
+    From nothing to a working proxy with evidence it is in the path.
+  </Card>
+  <Card href="/docs/pipeline/tiers" title="The four tiers">
+    How much tokunseba is allowed to do, decided one layer at a time.
+  </Card>
+  <Card href="/docs/routing/many-models" title="Many models at once">
+    A subscription, an API key and something running locally, all in one setup.
+  </Card>
+  <Card href="/docs/reference/commands" title="Every command">
+    All 57 of them, what each does and what each option means.
+  </Card>
+  <Card href="/docs/watching/dashboard" title="The dashboard">
+    In the terminal, or in a browser served from your own machine.
+  </Card>
+</Cards>
+
+## A note on numbers
+
+Savings depend entirely on what you do. Long agentic sessions with heavy tool use are where
+the wins are; short chats save almost nothing.
+
+Rather than promise a figure, tokunseba ships the measurement. Every session is assigned at
+random to a control arm or a treatment arm, both are recorded in the same ledger, and
+`tokunseba stats --ab` puts them side by side. A claim you can check against your own traffic
+is worth more than a number in a document.
+
+For calibration, one realistic agentic turn measured end to end during development, made of a
+system prompt, a pytest run and a large file read, went from 9,629 tokens to 138. A different
+turn in the same session, with less that could be reduced, went from 45,715 bytes to 12,461.
+Your numbers will differ from both.

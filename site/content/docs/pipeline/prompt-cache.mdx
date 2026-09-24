@@ -1,0 +1,81 @@
+---
+title: The prompt cache
+description: Why compressing history would cost more than it saves, and what is done instead.
+---
+
+A prompt cache matches on an **exact byte prefix**. Change one byte in a turn you already
+sent and every token after it has to be read again from scratch, which is roughly ten times
+the work the compression saved.
+
+This is the constraint that shapes the whole design.
+
+## Delta only
+
+tokunseba only ever transforms content that is **new in this request**. Everything already
+sent is forwarded byte for byte, whatever it contains and however wasteful it looks.
+
+That is why the savings in a long session accumulate rather than repeat: each turn's new tool
+output is reduced once, and from then on it is history and is never touched again.
+
+## The frozen table
+
+Every transformation is stored keyed by the SHA-256 of its input. The same original always
+produces the same replacement, forever, across restarts and across upgrades.
+
+This matters twice:
+
+1. **Re-sent history stays identical**, so the cache prefix survives.
+2. **Upgrading tokunseba does not invalidate your cache.** Content the proxy has already seen
+   keeps its existing replacement even if a newer version would now do something better with
+   it. New content gets the new treatment.
+
+<Callout>
+If you upgrade and wonder why a file you have already read is still being truncated rather
+than outlined, this is why. It is the cache being protected, not a bug. New reads get the
+new behaviour.
+</Callout>
+
+## Breakpoints a client forgot
+
+Some clients do not mark a cacheable prefix at all, and pay full price for context they send
+on every single turn. When tokunseba sees a request with a large stable prefix and no cache
+control on it, it adds the breakpoints:
+
+```
+cache_injected   14   tokunseba added cache breakpoints a client had omitted
+```
+
+The threshold is `thresholds.cache_min_tokens`, 1,024 by default, because a breakpoint on a
+prefix smaller than that is not worth the write.
+
+## Watching for drift
+
+The opposite problem is a client that puts a timestamp, a random identifier or a changing
+working directory *inside* its own cached prefix. The cache then misses on every single turn
+and nothing about the client's output says so.
+
+tokunseba watches for it and names the region:
+
+```
+cache_drift   3   a cached prefix changed, so the next request re-read it in full
+```
+
+`tokunseba report` shows which region drifted and how often. There is nothing tokunseba can
+do about it for you, because fixing it means changing what the client sends, but knowing it
+is happening is usually enough to find the cause.
+
+## Cache TTL
+
+Some providers offer a longer cache lifetime at a different write price. If your sessions are
+slow paced, tokunseba will notice and say so:
+
+```
+ttl_advice   this session is slow-paced enough to benefit from the 1 hour cache
+```
+
+```bash
+tokunseba config set proxy.cache_ttl 1h
+```
+
+It is off by default because the trade only pays for a particular rhythm of work, and
+guessing wrong makes things worse rather than better.

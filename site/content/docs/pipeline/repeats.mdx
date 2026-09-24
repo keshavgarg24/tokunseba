@@ -1,0 +1,71 @@
+---
+title: Repeats and re-reads
+description: The same file five times, and what happens to copies two through five.
+---
+
+An agent reads a file, does something else, and reads the same file again. Both copies are
+in the transcript, and both are sent on every subsequent turn. This is the cheapest waste to
+remove and the first thing tokunseba does.
+
+## The second copy becomes a pointer
+
+When a tool result is byte-identical to one earlier in the same conversation, it is replaced
+by a reference:
+
+```
+[tokunseba: identical to an earlier tool result in this conversation.
+ Full text: tokunseba expand h_9f2a4c81]
+```
+
+Recorded as `dedup_ref`.
+
+<Callout>
+The pointer is only used when it is genuinely smaller than the text it replaces. A duplicated
+three-line result stays as it is, because a reference to it would be larger than the result.
+That check is against the real tokenizer, not a character count.
+</Callout>
+
+## A changed file becomes a diff
+
+When the same path is read again and the contents have changed, the model does not need the
+file. It needs the change:
+
+```diff
+[tokunseba: src/server.py changed since it was last read. The change:]
+@@ -41,7 +41,7 @@
+-    timeout = 30
++    timeout = 120
+[Full file: tokunseba expand h_3b71d004]
+```
+
+Recorded as `diff_ref`.
+
+This is where the largest single savings usually come from in an edit-heavy session: a 900
+line file re-read after a two line change costs two lines.
+
+## Why only within a conversation
+
+Deduplication is scoped to the request being sent. A pointer to something in a different
+conversation would be a pointer to text the model cannot see, which is worse than sending
+the text.
+
+The *blob store* is global, so `tokunseba expand` works on any handle from any conversation,
+and a handle minted by Claude Code expands for you at the shell or for Codex through MCP. But
+the substitution itself only ever refers backwards inside the same request.
+
+## The reference never breaks
+
+If a reference somehow loses its target, tokunseba sends the full text instead and records a
+`ref_dangling` event. A pointer to nothing is the one failure mode that would actually change
+an answer, so it is checked rather than assumed.
+
+## Turning it off
+
+Deduplication and diffs are tier 1:
+
+```bash
+tokunseba tier disable 1
+```
+
+That is the tier that also does the lossless cleanup and the cache repair, so disabling it
+is a larger step than it sounds. Tier 0 keeps recording either way.

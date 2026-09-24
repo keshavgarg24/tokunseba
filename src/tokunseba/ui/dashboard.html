@@ -6,230 +6,215 @@
 <meta name="referrer" content="no-referrer">
 <title>tokunseba</title>
 <style>
-/* Everything on this page is inline on purpose. The dashboard must render with the
-   network unplugged: no font CDN, no script host, no analytics. If a byte of it went
-   out to fetch something, the claim on the footer would stop being true. */
-:root{
-  --accent:#3D7BE0; --accent-deep:#2B5CB8; --accent-bright:#7FB0FF;
-  --bg:#FAFAFA; --surface:#FFFFFF; --surface-2:#F4F5F7;
-  --text:#232831; --muted:#646B78; --border:rgba(35,40,49,.12);
-  --good:#2F8C5A; --warn:#B98A1E; --bad:#C2452E;
-  --shadow:0 1px 2px rgba(35,40,49,.04), 0 8px 28px rgba(35,40,49,.06);
-  --r:14px; --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+/* Everything on this page is inline on purpose. The dashboard must render with the network
+   unplugged: no font CDN, no script host, no analytics. If a byte of it went out to fetch
+   something, the claim in the footer would stop being true.
+
+   Dark is the default rather than the operating system's preference. This is a tool you run
+   in a terminal, next to a terminal. The toggle in the header remembers your choice. */
+:root {
+  --bg:#070a0f; --card:#0c1118; --muted-bg:#11161f; --hover:#151b25;
+  --fg:#e7edf5; --muted:#98a4b3; --faint:#6c7887;
+  --line:rgba(143,161,184,.16); --line-strong:rgba(143,161,184,.28);
+  --accent:#6fa3ff; --accent-dim:rgba(111,163,255,.14);
+  --good:#4ade80; --good-dim:rgba(74,222,128,.13);
+  --warn:#e3b341; --warn-dim:rgba(227,179,65,.13);
+  --bad:#ff7a6b;
+  --r:10px;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
   --sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  color-scheme:dark;
 }
-@media (prefers-color-scheme:dark){:root{
-  --bg:#101216; --surface:#181B21; --surface-2:#1F232B;
-  --text:#E4E8EF; --muted:#8C94A3; --border:rgba(228,232,239,.13);
-  --good:#59C48A; --warn:#DBB55C; --bad:#E2765E;
-  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 28px rgba(0,0,0,.25);
-}}
+html[data-theme="light"] {
+  --bg:#fafafa; --card:#fff; --muted-bg:#f4f5f7; --hover:#eef0f3;
+  --fg:#101318; --muted:#5f6774; --faint:#858d9a;
+  --line:rgba(16,19,24,.11); --line-strong:rgba(16,19,24,.2);
+  --accent:#3d7be0; --accent-dim:rgba(61,123,224,.1);
+  --good:#1a7f4b; --good-dim:rgba(26,127,75,.1);
+  --warn:#9a6c12; --warn-dim:rgba(154,108,18,.1);
+  --bad:#c2452e;
+  color-scheme:light;
+}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:var(--sans);
-  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
-.wrap{max-width:1180px;margin:0 auto;padding:0 20px 72px}
-a{color:inherit}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;
+  line-height:1.55;-webkit-font-smoothing:antialiased}
+code,.mono{font-family:var(--mono);font-variant-ligatures:none}
+.wrap{max-width:1140px;margin:0 auto;padding:0 20px 72px}
 
-/* ---------------------------------------------------------------- top bar */
-.topbar{position:sticky;top:0;z-index:20;backdrop-filter:blur(12px);
-  background:color-mix(in srgb,var(--bg) 82%,transparent);
-  border-bottom:1px solid var(--border)}
-.topbar .inner{max-width:1180px;margin:0 auto;padding:12px 20px;
-  display:flex;align-items:center;gap:14px}
-.brand{display:flex;align-items:center;gap:9px;font-weight:600;letter-spacing:-.02em}
+/* ------------------------------------------------------------------- header */
+header{position:sticky;top:0;z-index:20;background:var(--bg);
+  border-bottom:1px solid var(--line)}
+header .in{max-width:1140px;margin:0 auto;padding:13px 20px;display:flex;
+  align-items:center;gap:14px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:600;letter-spacing:-.02em}
 .brand svg{display:block}
-.dot{width:7px;height:7px;border-radius:99px;background:var(--muted);flex:none}
-.dot.up{background:var(--good);box-shadow:0 0 0 0 color-mix(in srgb,var(--good) 55%,transparent);
-  animation:ping 2.4s ease-out infinite}
-.dot.down{background:var(--bad)}
-@keyframes ping{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--good) 50%,transparent)}
-  50%{box-shadow:0 0 0 5px transparent}}
-.live{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12.5px}
-.spacer{flex:1}
-.seg{display:flex;border:1px solid var(--border);border-radius:99px;overflow:hidden;
-  background:var(--surface)}
-.seg button{border:0;background:transparent;color:var(--muted);font:inherit;font-size:12.5px;
-  padding:5px 13px;cursor:pointer;transition:background .15s,color .15s}
-.seg button[aria-pressed=true]{background:var(--accent);color:#fff}
-.seg button:hover:not([aria-pressed=true]){color:var(--text)}
+.state{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12.5px}
+.dot{width:6px;height:6px;border-radius:99px;background:var(--faint);flex:none}
+.dot.up{background:var(--good)} .dot.down{background:var(--bad)}
+.sp{flex:1}
+.seg{display:flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.seg button{border:0;border-right:1px solid var(--line);background:transparent;
+  color:var(--muted);font:inherit;font-size:12.5px;padding:5px 12px;cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--bg)}
+html[data-theme="light"] .seg button[aria-pressed=true]{color:#fff}
+.seg button:hover:not([aria-pressed=true]){background:var(--hover);color:var(--fg)}
+.icon{border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer;
+  border-radius:var(--r);padding:6px 8px;display:inline-flex;line-height:0}
+.icon:hover{background:var(--hover);color:var(--fg)}
 
-/* ------------------------------------------------------------------- hero */
-.hero{position:relative;margin:22px 0 20px;border-radius:24px;overflow:hidden;
-  isolation:isolate;padding:40px 34px 34px;color:#fff;
-  background:
-    radial-gradient(85% 60% at 50% -10%, rgba(61,123,224,.42), transparent 62%),
-    repeating-linear-gradient(90deg, transparent 0 45px, rgba(255,255,255,.045) 45px 46px, transparent 46px 90px),
-    linear-gradient(180deg, transparent 55%, rgba(0,0,0,.34) 100%),
-    linear-gradient(138deg,#0E2A56 0%,#152134 38%,#1A1C22 64%,#2A2440 100%)}
-/* The mark, drawn large and faint behind the numbers, tracing itself on a slow loop.
-   It is the only decoration here; it costs nothing and it tells you the page is live
-   even when the figures happen not to be moving. */
-.hero .glyph{position:absolute;right:-70px;top:50%;translate:0 -50%;width:420px;height:420px;
-  opacity:.14;pointer-events:none;z-index:-1}
-.hero .glyph path{stroke-dasharray:60;stroke-dashoffset:60;
-  animation:draw 9s cubic-bezier(.65,0,.35,1) infinite}
-.hero .glyph path:nth-child(2){animation-delay:.35s}
-.hero .glyph path:nth-child(3){animation-delay:.7s}
-.hero .glyph path:nth-child(4){animation-delay:1.05s}
-@keyframes draw{0%{stroke-dashoffset:60}28%,72%{stroke-dashoffset:0}100%{stroke-dashoffset:-60}}
-/* Tokens drifting in from the left, arriving smaller and blue on the right. */
-.stream{position:absolute;inset:0;z-index:-1;opacity:.5;pointer-events:none;overflow:hidden}
-.tok{position:absolute;height:5px;border-radius:99px;background:rgba(255,255,255,.34);
-  animation:flow linear infinite}
-.tok.clean{background:var(--accent-bright);height:4px}
-@keyframes flow{0%{transform:translateX(-14vw);opacity:0}
-  8%{opacity:.85}88%{opacity:.85}100%{transform:translateX(112vw);opacity:0}}
-@media (prefers-reduced-motion:reduce){
-  .hero .glyph path,.tok,.dot.up{animation:none}
-  .hero .glyph path{stroke-dashoffset:0}.tok{display:none}}
-.eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;
-  color:rgba(255,255,255,.5)}
-.headline{font-size:clamp(38px,6vw,66px);font-weight:650;letter-spacing:-.035em;
-  line-height:1.02;margin:10px 0 0;font-variant-numeric:tabular-nums}
-.headline small{font-size:.42em;font-weight:600;letter-spacing:-.02em;
-  color:rgba(255,255,255,.55);margin-left:6px}
-.sub{margin:12px 0 0;color:rgba(255,255,255,.72);max-width:54ch}
-.sub b{color:var(--accent-bright);font-weight:600}
-.herofoot{display:flex;flex-wrap:wrap;gap:26px;margin-top:26px;
-  padding-top:20px;border-top:1px solid rgba(255,255,255,.14)}
-.herofoot div{min-width:104px}
-.herofoot .k{font-size:11px;letter-spacing:.1em;text-transform:uppercase;
-  color:rgba(255,255,255,.46);font-weight:600}
-.herofoot .v{font-size:19px;font-weight:600;letter-spacing:-.02em;margin-top:3px;
-  font-variant-numeric:tabular-nums}
+/* -------------------------------------------------------------------- blocks */
+.lede{padding:34px 0 26px;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:650;
+  color:var(--muted)}
+.big{font-size:clamp(38px,6vw,56px);font-weight:700;letter-spacing:-.04em;line-height:1.02;
+  margin-top:8px;font-variant-numeric:tabular-nums}
+.big em{font-style:normal;font-size:.38em;font-weight:600;letter-spacing:-.02em;
+  color:var(--muted);margin-left:10px}
+.lede p{margin:10px 0 0;color:var(--muted);max-width:66ch}
+.lede p b{color:var(--fg);font-weight:600}
 
-/* ------------------------------------------------------------------ cards */
-.grid{display:grid;gap:14px}
-.tiles{grid-template-columns:repeat(auto-fit,minmax(168px,1fr));margin-bottom:20px}
-.two{grid-template-columns:repeat(auto-fit,minmax(340px,1fr));margin-bottom:20px}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
-  padding:16px 18px;box-shadow:var(--shadow)}
-.tile .k{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
-  font-weight:600}
-.tile .v{font-size:26px;font-weight:650;letter-spacing:-.03em;margin-top:5px;
+.row{display:grid;gap:0;border-bottom:1px solid var(--line);
+  grid-template-columns:repeat(auto-fit,minmax(128px,1fr))}
+.row>div{padding:18px 16px 18px 0}
+.row .k{font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;font-weight:650;
+  color:var(--faint)}
+.row .v{font-size:21px;font-weight:650;letter-spacing:-.025em;margin-top:4px;
   font-variant-numeric:tabular-nums}
-.tile .n{font-size:12px;color:var(--muted);margin-top:2px}
-h2{font-size:13px;font-weight:600;letter-spacing:.02em;margin:0 0 12px;color:var(--text)}
-h2 span{color:var(--muted);font-weight:400;margin-left:7px}
+.row .n{font-size:12px;color:var(--muted);margin-top:1px}
+
+.grid{display:grid;gap:14px;margin-top:22px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(360px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
+h2{font-size:13px;font-weight:600;margin:0 0 13px;letter-spacing:-.01em}
+h2 span{color:var(--muted);font-weight:400;margin-left:7px;font-size:12.5px}
+
+.banner{border:1px solid var(--line-strong);border-radius:var(--r);padding:13px 16px;
+  margin-top:20px;font-size:13px;color:var(--muted);background:var(--card)}
+.banner b{color:var(--bad)}
+.banner.quiet b{color:var(--fg)}
+.banner code{background:var(--muted-bg);padding:1px 6px;border-radius:5px;font-size:12px}
 
 table{width:100%;border-collapse:collapse;font-size:13px}
-th{text-align:left;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
-  color:var(--muted);font-weight:600;padding:0 8px 7px 0;border-bottom:1px solid var(--border)}
-td{padding:7px 8px 7px 0;border-bottom:1px solid var(--border);vertical-align:baseline}
+th{text-align:left;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);font-weight:650;padding:0 10px 8px 0;border-bottom:1px solid var(--line)}
+td{padding:8px 10px 8px 0;border-bottom:1px solid var(--line);vertical-align:baseline}
 tr:last-child td{border-bottom:0}
-td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;padding-right:0}
-td.mono{font-family:var(--mono);font-size:12px}
-.pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:11px;font-weight:600;
-  background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent)}
-.pill.g{background:color-mix(in srgb,var(--good) 14%,transparent);color:var(--good)}
-.pill.w{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
-.bar{height:5px;border-radius:99px;background:var(--surface-2);overflow:hidden;margin-top:5px}
-.bar i{display:block;height:100%;border-radius:99px;background:var(--accent);
-  transition:width .5s cubic-bezier(.4,0,.2,1)}
-.empty{color:var(--muted);font-size:13px;padding:6px 0}
-.banner{border-radius:var(--r);padding:12px 16px;margin-bottom:18px;font-size:13px;
-  background:color-mix(in srgb,var(--bad) 10%,var(--surface));
-  border:1px solid color-mix(in srgb,var(--bad) 32%,transparent)}
-.banner b{color:var(--bad)}
-.banner code,.foot code{font-family:var(--mono);font-size:12px;
-  background:var(--surface-2);padding:1px 5px;border-radius:5px}
-.foot{margin-top:28px;color:var(--muted);font-size:12px;display:flex;flex-wrap:wrap;
-  gap:8px 18px;align-items:center}
-svg.spark{display:block;width:100%;height:64px;overflow:visible}
-.slist{display:flex;flex-direction:column;gap:9px}
-.srow{display:flex;align-items:center;gap:10px;font-size:12.5px}
-.srow .lbl{flex:none;width:118px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
+/* A right-aligned number followed by a left-aligned word needs a gutter, or the two
+   headings touch. Only the last column may sit flush against the edge. */
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;padding-right:16px}
+td.num:last-child,th.num:last-child{padding-right:0}
+td.mono{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.tag{display:inline-block;padding:1px 8px;border-radius:99px;font-size:11px;font-weight:600;
+  background:var(--accent-dim);color:var(--accent)}
+.tag.g{background:var(--good-dim);color:var(--good)}
+.tag.w{background:var(--warn-dim);color:var(--warn)}
+.empty{color:var(--muted);font-size:13px;padding:4px 0}
+svg.spark{display:block;width:100%;height:76px;overflow:visible}
+
+.bars{display:flex;flex-direction:column;gap:8px}
+.bar{display:flex;align-items:center;gap:10px;font-size:12.5px}
+.bar .l{flex:none;width:130px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap}
-.srow .bar{flex:1;margin:0}
-.srow .cnt{flex:none;width:44px;text-align:right;font-variant-numeric:tabular-nums}
+.bar .t{flex:1;height:4px;border-radius:99px;background:var(--muted-bg);overflow:hidden}
+.bar .t i{display:block;height:100%;border-radius:99px;background:var(--accent)}
+.bar .c{flex:none;width:46px;text-align:right;font-variant-numeric:tabular-nums}
+
+footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--line);color:var(--faint);
+  font-size:12px;display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center}
+footer code{background:var(--muted-bg);padding:1px 6px;border-radius:5px}
 </style>
 </head>
 <body>
 
-<header class="topbar"><div class="inner">
+<header><div class="in">
   <span class="brand">
-    <svg width="22" height="22" viewBox="0 0 64 64" aria-hidden="true">
-      <g fill="none" stroke="currentColor" stroke-width="6.5" stroke-linecap="round"
-         stroke-linejoin="round">
+    <svg width="19" height="19" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+      <g stroke="currentColor" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M5 13h21l13 19"/><path d="M5 51h21l13-19"/><path d="M5 32h34"/>
       </g>
-      <path d="M39 32h19" fill="none" stroke="#3D7BE0" stroke-width="9" stroke-linecap="round"/>
+      <path d="M39 32h19" stroke="#6fa3ff" stroke-width="9" stroke-linecap="round"/>
     </svg>
     tokunseba
   </span>
-  <span class="live"><span class="dot" id="dot"></span><span id="livetext">connecting</span></span>
-  <span class="spacer"></span>
+  <span class="state"><span class="dot" id="dot"></span><span id="livetext">connecting</span></span>
+  <span class="sp"></span>
   <span class="seg" id="seg">
     <button data-since="24h">24h</button>
     <button data-since="7d" aria-pressed="true">7d</button>
     <button data-since="30d">30d</button>
   </span>
+  <button class="icon" id="theme" aria-label="Switch theme" title="Switch theme">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="themeicon"></svg>
+  </button>
 </div></header>
 
 <div class="wrap">
   <div id="banner"></div>
 
-  <section class="hero">
-    <svg class="glyph" viewBox="0 0 64 64" aria-hidden="true" fill="none"
-         stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M5 13h21l13 19"/><path d="M5 51h21l13-19"/><path d="M5 32h34"/>
-      <path d="M39 32h19" stroke="#7FB0FF" stroke-width="7"/>
-    </svg>
-    <div class="stream" id="stream"></div>
+  <section class="lede">
     <div class="eyebrow">Tokens never sent</div>
-    <h1 class="headline"><span id="saved">—</span><small id="savedpct"></small></h1>
-    <p class="sub" id="herosub">Reading the ledger.</p>
-    <div class="herofoot">
-      <div><div class="k">Requests</div><div class="v" id="hf-req">—</div></div>
-      <div><div class="k">Avg context</div><div class="v" id="hf-ctx">—</div></div>
-      <div><div class="k">Peak request</div><div class="v" id="hf-peak">—</div></div>
-      <div><div class="k">Cache hits</div><div class="v" id="hf-cache">—</div></div>
-      <div><div class="k">Handles kept</div><div class="v" id="hf-handles">—</div></div>
-    </div>
+    <div class="big"><span id="saved">&mdash;</span><em id="savedpct"></em></div>
+    <p id="lede">Reading the ledger.</p>
   </section>
 
-  <div class="grid tiles" id="tiles"></div>
+  <section class="row" id="row"></section>
 
-  <div class="card" style="margin-bottom:20px">
-    <h2>Tokens never sent, per day <span id="sparkrange"></span></h2>
-    <div id="spark"></div>
+  <div class="grid">
+    <div class="card">
+      <h2>Tokens never sent, per day <span id="sparkrange"></span></h2>
+      <div id="spark"></div>
+    </div>
   </div>
 
-  <div class="grid two">
-    <div class="card"><h2>By tool <span>which client sent the traffic</span></h2>
-      <div id="bytool"></div></div>
-    <div class="card"><h2>Models seen <span>what actually answered</span></h2>
-      <div id="models"></div></div>
+  <div class="grid g2">
+    <div class="card"><h2>By tool <span>which client sent the traffic</span></h2><div id="bytool"></div></div>
+    <div class="card"><h2>Models seen <span>what actually answered</span></h2><div id="models"></div></div>
   </div>
 
-  <div class="grid two">
-    <div class="card"><h2>Biggest reductions <span>what the tokens were spent on</span></h2>
-      <div id="top"></div></div>
-    <div class="card"><h2>Largest passthroughs <span>what could not be reduced</span></h2>
-      <div id="pass"></div></div>
+  <div class="grid g2">
+    <div class="card"><h2>Biggest reductions <span>and the handle that holds each original</span></h2><div id="top"></div></div>
+    <div class="card"><h2>Largest passthroughs <span>what could not be reduced</span></h2><div id="pass"></div></div>
   </div>
 
-  <div class="grid two">
+  <div class="grid g2">
     <div class="card"><h2>What the judge made of your prompts</h2><div id="signals"></div></div>
-    <div class="card"><h2>Signals <span>every decision the proxy logged</span></h2>
-      <div id="events"></div></div>
+    <div class="card"><h2>Signals <span>every decision the proxy logged</span></h2><div id="events"></div></div>
   </div>
 
-  <div class="card"><h2>Recent conversations</h2><div id="sessions"></div></div>
+  <div class="grid">
+    <div class="card"><h2>Recent conversations</h2><div id="sessions"></div></div>
+  </div>
 
-  <div class="foot">
+  <footer>
     <span>Served from <code id="origin">127.0.0.1</code>. This page makes no request to
       anything but that address, and the process behind it reads only your local ledger.</span>
-    <span class="spacer"></span>
+    <span class="sp"></span>
     <span id="ver"></span>
-  </div>
+  </footer>
 </div>
 
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 let since = "7d";
+
+// ---- theme ---------------------------------------------------------------
+const SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4' +
+  'M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
+const MOON = '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>';
+function paint(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  $("themeicon").innerHTML = theme === "light" ? MOON : SUN;
+  try { localStorage.setItem("tokunseba-theme", theme); } catch {}
+}
+let stored = null;
+try { stored = localStorage.getItem("tokunseba-theme"); } catch {}
+paint(stored === "light" ? "light" : "dark");
+$("theme").addEventListener("click", () =>
+  paint(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light"));
 
 // ---- formatting ----------------------------------------------------------
 const k = (n) => {
@@ -265,50 +250,29 @@ function table(cols, rows, empty) {
 function bars(pairs, empty) {
   if (!pairs.length) return '<div class="empty">' + esc(empty) + "</div>";
   const max = Math.max(...pairs.map((p) => p[1]), 1);
-  return '<div class="slist">' + pairs.map(([label, n]) =>
-    '<div class="srow"><span class="lbl" title="' + esc(label) + '">' + esc(label) +
-    '</span><span class="bar"><i style="width:' + (100 * n / max).toFixed(1) +
-    '%"></i></span><span class="cnt">' + k(n) + "</span></div>").join("") + "</div>";
+  return '<div class="bars">' + pairs.map(([label, n]) =>
+    '<div class="bar"><span class="l" title="' + esc(label) + '">' + esc(label) +
+    '</span><span class="t"><i style="width:' + (100 * n / max).toFixed(1) +
+    '%"></i></span><span class="c">' + k(n) + "</span></div>").join("") + "</div>";
 }
 
-// ---- the daily chart -----------------------------------------------------
 function sparkline(days) {
   if (!days.length) return '<div class="empty">Nothing recorded yet.</div>';
   const vals = days.map((d) => Number(d.tokens_saved) || 0);
-  const max = Math.max(...vals, 1), W = 1000, H = 64, n = vals.length;
-  const x = (i) => n < 2 ? W / 2 : (i * W) / (n - 1);
-  const y = (v) => H - (v / max) * (H - 6) - 2;
+  const max = Math.max(...vals, 1), W = 1000, H = 76, n = vals.length;
+  const x = (i) => (n < 2 ? W / 2 : (i * W) / (n - 1));
+  const y = (v) => H - (v / max) * (H - 10) - 4;
   const line = vals.map((v, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1)).join(" ");
-  const area = line + " L" + W + " " + H + " L0 " + H + " Z";
   const dots = vals.map((v, i) =>
     '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(v).toFixed(1) +
-    '" r="2.5" fill="var(--accent)"><title>' + esc(days[i].day) + ": " + k(v) +
+    '" r="2" fill="var(--accent)"><title>' + esc(days[i].day) + ": " + k(v) +
     " tokens</title></circle>").join("");
   return '<svg class="spark" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none">' +
-    '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">' +
-    '<stop offset="0%" stop-color="var(--accent)" stop-opacity=".26"/>' +
-    '<stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>' +
-    '<path d="' + area + '" fill="url(#g)"/>' +
-    '<path d="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2" ' +
+    '<path d="' + line + " L" + W + " " + H + " L0 " + H + ' Z" fill="var(--accent-dim)"/>' +
+    '<path d="' + line + '" fill="none" stroke="var(--accent)" stroke-width="1.5" ' +
     'stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>' +
     dots + "</svg>";
 }
-
-// ---- background token stream --------------------------------------------
-(function stream() {
-  const host = $("stream");
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  for (let i = 0; i < 16; i++) {
-    const t = document.createElement("i");
-    const clean = i % 3 === 2;
-    t.className = "tok" + (clean ? " clean" : "");
-    t.style.top = (6 + Math.random() * 88).toFixed(1) + "%";
-    t.style.width = (clean ? 10 + Math.random() * 16 : 24 + Math.random() * 46).toFixed(0) + "px";
-    t.style.animationDuration = (7 + Math.random() * 7).toFixed(1) + "s";
-    t.style.animationDelay = (-Math.random() * 12).toFixed(1) + "s";
-    host.appendChild(t);
-  }
-})();
 
 // ---- render --------------------------------------------------------------
 function render(d) {
@@ -323,13 +287,13 @@ function render(d) {
     ? '<div class="banner"><b>Not in the path.</b> ' + esc(d.problem) +
       " Until that is fixed the figures below stop moving.</div>"
     : (d.running ? "" :
-      '<div class="banner" style="background:var(--surface);border-color:var(--border)">' +
-      "The proxy is not running, so nothing is being recorded right now. " +
-      "Start it with <code>tokunseba start</code>. Everything below is history.</div>");
+      '<div class="banner quiet"><b>The proxy is not running,</b> so nothing is being ' +
+      "recorded right now. Start it with <code>tokunseba start</code>. " +
+      "Everything below is history.</div>");
 
   $("saved").textContent = k(s.tokens_saved);
   $("savedpct").textContent = s.tokens_saved ? pct(s.pct_saved) + " smaller" : "";
-  $("herosub").innerHTML = s.requests
+  $("lede").innerHTML = s.requests
     ? "Across <b>" + k(s.requests) + "</b> request" + (s.requests === 1 ? "" : "s") +
       " in the last " + esc(since) + ", from <b>" + k(sum.sessions) + "</b> conversation" +
       (sum.sessions === 1 ? "" : "s") + " in <b>" + k(sum.projects) + "</b> project" +
@@ -337,22 +301,18 @@ function render(d) {
     : "Nothing recorded in the last " + esc(since) +
       ". Point a tool at the proxy and the numbers start here.";
 
-  $("hf-req").textContent = k(s.requests);
-  $("hf-ctx").textContent = k(s.avg_context);
-  $("hf-peak").textContent = k(s.max_request_tokens);
-  $("hf-cache").textContent = pct(s.cache_hit_rate);
-  $("hf-handles").textContent = k(sum.handles);
-
-  const tiles = [
-    ["Sent upstream", k(s.input_tokens), "input, cache reads and writes"],
-    ["Fresh tokens", k(s.fresh_tokens), "the part no cache covered"],
-    ["Replies", k(s.output_tokens), "output tokens returned"],
-    ["Substitutions", k(sum.transforms), "pieces of text replaced"],
-    ["Models", k(sum.models), "distinct models answered"],
-    ["Provider time", ms(s.latency_ms / Math.max(s.requests, 1)), "average per request"],
+  const cells = [
+    ["Requests", k(s.requests), ""],
+    ["Avg context", k(s.avg_context), "per request"],
+    ["Peak request", k(s.max_request_tokens), ""],
+    ["Cache hits", pct(s.cache_hit_rate), "of what was read"],
+    ["Fresh tokens", k(s.fresh_tokens), "no cache covered"],
+    ["Substitutions", k(sum.transforms), k(sum.handles) + " handles kept"],
+    ["Models", k(sum.models), "answered"],
+    ["Provider time", ms(s.latency_ms / Math.max(s.requests, 1)), "average"],
   ];
-  $("tiles").innerHTML = tiles.map(([kk, v, n]) =>
-    '<div class="card tile"><div class="k">' + esc(kk) + '</div><div class="v">' + esc(v) +
+  $("row").innerHTML = cells.map(([kk, v, n]) =>
+    '<div><div class="k">' + esc(kk) + '</div><div class="v">' + esc(v) +
     '</div><div class="n">' + esc(n) + "</div></div>").join("");
 
   $("sparkrange").textContent = d.daily.length ? "last " + d.daily.length + " days" : "";
@@ -362,7 +322,7 @@ function render(d) {
     { h: "Tool", f: (r) => esc(r.tool || "unknown") },
     { h: "Requests", num: true, f: (r) => k(r.requests) },
     { h: "Tokens", num: true, f: (r) => k(r.tokens) },
-    { h: "Never sent", num: true, f: (r) => '<span class="pill g">' + k(r.tokens_saved) + "</span>" },
+    { h: "Never sent", num: true, f: (r) => '<span class="tag g">' + k(r.tokens_saved) + "</span>" },
   ], s.by_tool, "No tool has sent anything through yet.");
 
   $("models").innerHTML = table([
@@ -374,29 +334,25 @@ function render(d) {
   ], d.models, "No model has answered through the proxy yet.");
 
   $("top").innerHTML = table([
-    { h: "Kind", f: (r) => '<span class="pill">' + esc(r.kind) + "</span>" },
+    { h: "Kind", f: (r) => '<span class="tag">' + esc(r.kind) + "</span>" },
     { h: "Was", num: true, f: (r) => k(r.orig_tokens) },
     { h: "Now", num: true, f: (r) => k(r.new_tokens) },
-    { h: "Never sent", num: true, f: (r) => '<span class="pill g">' + k(r.saved) + "</span>" },
-    { h: "Recoverable as", mono: true, f: (r) => esc(r.handle || "—") },
+    { h: "Never sent", num: true, f: (r) => '<span class="tag g">' + k(r.saved) + "</span>" },
+    { h: "Recoverable as", mono: true, f: (r) => esc(r.handle || "not stored") },
   ], d.top, "Nothing large enough to reduce has come through yet.");
 
   $("pass").innerHTML = table([
     { h: "Block", mono: true, f: (r) => esc(String(r.orig_sha).slice(0, 12)) },
-    { h: "Tokens", num: true, f: (r) => '<span class="pill w">' + k(r.orig_tokens) + "</span>" },
+    { h: "Tokens", num: true, f: (r) => '<span class="tag w">' + k(r.orig_tokens) + "</span>" },
     { h: "Seen", num: true, f: (r) => esc(ago(r.created)) },
   ], d.passthroughs, "Nothing sizeable went through untouched.");
 
   const sig = d.signals;
   $("signals").innerHTML = sig.judged
-    ? '<div class="slist" style="margin-bottom:12px">' +
-      '<div class="srow"><span class="lbl">Judged</span><span class="bar">' +
-      '<i style="width:100%"></i></span><span class="cnt">' + k(sig.judged) + "</span></div>" +
-      '<div class="srow"><span class="lbl">Confident enough</span><span class="bar"><i style="width:' +
-      (100 * sig.confident / Math.max(sig.judged, 1)).toFixed(1) + '%"></i></span>' +
-      '<span class="cnt">' + k(sig.confident) + "</span></div></div>" +
+    ? bars([["judged", sig.judged], ["confident enough", sig.confident]], "") +
+      '<div style="height:14px"></div>' +
       bars(Object.entries(sig.domains).sort((a, b) => b[1] - a[1]), "") +
-      '<div style="height:12px"></div>' +
+      '<div style="height:14px"></div>' +
       bars(Object.entries(sig.levels).sort((a, b) => b[1] - a[1]), "")
     : '<div class="empty">No prompt has been judged in this window. ' +
       "Routing only reads the first turn of a conversation.</div>";
@@ -407,11 +363,11 @@ function render(d) {
 
   $("sessions").innerHTML = table([
     { h: "Last seen", f: (r) => esc(ago(r.last_seen)) },
-    { h: "Tool", f: (r) => esc(r.tool || "—") },
-    { h: "Project", f: (r) => esc((r.project || "").split("/").pop() || "—") },
-    { h: "Model", mono: true, f: (r) => esc(r.model || "—") },
-    { h: "Arm", f: (r) => r.arm ? '<span class="pill' + (r.arm === "control" ? " w" : "") + '">' +
-      esc(r.arm) + "</span>" : "—" },
+    { h: "Tool", f: (r) => esc(r.tool || "unknown") },
+    { h: "Project", f: (r) => esc((r.project || "").split("/").pop() || "unknown") },
+    { h: "Model", mono: true, f: (r) => esc(r.model || "unknown") },
+    { h: "Arm", f: (r) => r.arm ? '<span class="tag' + (r.arm === "control" ? " w" : "") + '">' +
+      esc(r.arm) + "</span>" : "" },
     { h: "Requests", num: true, f: (r) => k(r.requests) },
     { h: "Never sent", num: true, f: (r) => k(r.tokens_saved) },
   ], d.sessions, "No conversation has been recorded yet.");

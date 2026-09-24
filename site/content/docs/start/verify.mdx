@@ -1,0 +1,98 @@
+---
+title: Proving it works
+description: The difference between configured and actually in the path, and how to tell.
+---
+
+There are two separate questions, and confusing them is the single most common way to end up
+staring at a report full of zeros.
+
+| Question | Command | What it reads |
+|---|---|---|
+| Is it configured? | `tokunseba doctor` | Settings files, environment variables, the service |
+| Is it actually being used? | `tokunseba verify` | The ledger: requests that really arrived |
+
+## doctor
+
+```bash
+tokunseba doctor
+```
+
+Checks the installation and reports anything that would quietly send more than it needs to.
+Each row is `ok`, `--` or a warning:
+
+- **`ok`** the thing is configured and working.
+- **`--`** the thing exists but has not been asked to do anything. Not a failure.
+- **warning** something is actively working against you. These are the rows to read.
+
+The most important warning it produces:
+
+```
+--  no conflicting base url    ANTHROPIC_BASE_URL=https://api.anthropic.com
+                               overrides the settings file
+```
+
+An exported environment variable beats a settings file. If something in your shell profile,
+or an application that spawned your terminal, exports a base URL pointing at the provider,
+your tool bypasses the proxy no matter what `init` wrote. Unset it and start your tool from a
+new shell.
+
+## verify
+
+```bash
+tokunseba verify
+```
+
+This does not read configuration at all. It reads what happened:
+
+- whether any request has arrived, and how recently
+- which tools they came from
+- how many tokens were kept off the wire
+- which transforms actually fired
+
+If nothing has arrived, it says so and tells you the likely reason rather than printing
+zeros. The usual causes, in order of how often they are the answer:
+
+1. **An exported base URL wins over the settings file.** `doctor` names it.
+2. **The tool was opened from the Dock**, so it never read your shell profile. Run
+   `tokunseba apps on`.
+3. **The shell block has not been picked up yet.** Open a new terminal.
+4. **The proxy is not running.** `tokunseba status`.
+
+## Seeing one request end to end
+
+```bash
+tokunseba top --since 24h
+```
+
+gives you the transforms and the handles. For any request id:
+
+```bash
+tokunseba explain <request-id>
+```
+
+prints original beside replacement, block by block. For any handle:
+
+```bash
+tokunseba expand <handle>
+```
+
+prints the original text exactly as it arrived. If what comes back is not identical to what
+your tool produced, that is a bug worth reporting.
+
+## Measuring whether it helped
+
+Every session is assigned at random to a control arm or a treatment arm. Both go into the
+same ledger:
+
+```bash
+tokunseba stats --ab
+```
+
+That compares requests per session, input and output tokens per session, and latency per
+request, between the two arms. It is the only figure on this site that is about your own
+traffic rather than someone else's.
+
+<Callout>
+The arms only differ when tier 3 is on. With tier 3 off, both arms get identical treatment
+and the comparison will show no difference, which is correct.
+</Callout>

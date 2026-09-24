@@ -1,0 +1,158 @@
+---
+title: Troubleshooting
+description: The things that actually go wrong, in the order they usually do.
+---
+
+## Every report reads zero
+
+In order of how often this is the answer:
+
+<Steps>
+<Step>
+### An exported base URL beats the settings file
+
+```bash
+tokunseba doctor
+```
+
+If you see:
+
+```
+--  no conflicting base url    ANTHROPIC_BASE_URL=https://api.anthropic.com
+                               overrides the settings file
+```
+
+then something in your shell profile, or an application that spawned your terminal, exports
+a base URL pointing straight at the provider. An exported variable wins over anything `init`
+wrote.
+
+Find it, unset it, and start your tool from a new shell. Or bypass the question entirely:
+
+```bash
+tokunseba wrap claude
+```
+
+which sets the variables on the tool's own process, where nothing inherited can win.
+</Step>
+
+<Step>
+### The tool was opened from the Dock
+
+A GUI-launched application never reads your shell profile.
+
+```bash
+tokunseba apps status
+tokunseba apps on
+```
+
+See [Applications from the Dock](/docs/using/gui-apps).
+</Step>
+
+<Step>
+### The shell block has not been picked up
+
+It only runs when a shell starts. Open a new terminal.
+</Step>
+
+<Step>
+### The proxy is not running
+
+```bash
+tokunseba status
+tokunseba start
+```
+</Step>
+</Steps>
+
+Then confirm with traffic rather than configuration:
+
+```bash
+tokunseba verify
+```
+
+## The proxy will not start
+
+```bash
+tokunseba start --foreground
+```
+
+runs it in your terminal where you can see the error. The usual causes:
+
+- **The port is taken.** `tokunseba config set proxy.port 7778` then `tokunseba restart`.
+- **No user service manager.** Windows has neither launchd nor systemd, so there is nothing
+  to keep the proxy alive in the background. `tokunseba start --foreground` is the supported
+  way to run it there, and tokunseba says so rather than writing a unit file that would do
+  nothing.
+
+## Routing never fires
+
+Expected, with the default judge. See
+[how often it actually fires](/docs/routing/routing#how-often-it-actually-fires).
+
+```bash
+tokunseba route status               # is it even enabled
+tokunseba route test "your prompt"   # what the judge makes of it
+tokunseba advise --since 30d         # what would have moved across your history
+```
+
+Three things change it: lower `judge.gate_threshold`, write rules on `--domain` rather than
+`--max-difficulty`, or enable the [local judge](/docs/routing/judge).
+
+## A rule matches but nothing happens
+
+Look for `route_refused` in `tokunseba stats`. A rule is refused, rather than attempted, when:
+
+- the upstream it names does not exist. `tokunseba models list`
+- the client's protocol cannot reach that upstream, directly or by translation.
+  `tokunseba models` shows which pairs work
+
+## An upgrade did not change anything
+
+Content the proxy has already seen keeps its existing replacement, because a prompt cache
+matches on an exact byte prefix and changing history would cost far more than the better
+replacement saves.
+
+New content gets the new behaviour. This is the frozen table working as designed, not a bug.
+See [The prompt cache](/docs/pipeline/prompt-cache).
+
+## A handle will not expand
+
+Two reasons, and `expand` names which:
+
+1. The retention window passed. `tokunseba retention show`
+2. The text contained something that looked like a credential, so it was never written to
+   disk. The marker says so instead of naming a handle.
+
+## `explain` says it has no body
+
+Request bodies have a shorter window than the ledger, 14 days by default, and are not stored
+at all if `proxy.store_bodies` is off.
+
+```bash
+tokunseba retention show
+tokunseba config show | grep store_bodies
+```
+
+## A local model gives confidently wrong answers
+
+Look for `context_overflow_risk` in `tokunseba stats`. A local model with a smaller window
+than the request was built for will silently truncate the prompt and answer from what is
+left, with no error anywhere.
+
+```bash
+tokunseba config set thresholds.local_truncate_tokens 1000
+```
+
+## Something else
+
+Everything the proxy decided is recorded, and every signal is explained:
+
+```bash
+tokunseba stats --since 24h
+tokunseba report
+tokunseba explain <request-id>
+```
+
+If tokunseba itself hit a bug, you will see `passthrough_after_error`. Your request was
+forwarded untouched, and the failure is in `~/.tokunseba/logs/proxy.log`. That log plus the
+output of `tokunseba doctor` is what a useful bug report contains.

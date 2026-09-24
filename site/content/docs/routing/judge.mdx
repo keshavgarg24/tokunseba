@@ -1,0 +1,109 @@
+---
+title: The judge
+description: What reads your prompt, how sure it has to be, and the optional local model.
+---
+
+Something has to decide what a turn is before anything can be routed. That is the judge.
+
+There are two backends. The first is always available and needs nothing. The second is a real
+model you run on your own machine, and it is opt in.
+
+## The rules judge
+
+Default, always available, needs no model, no key and no download. It answers from calibrated
+patterns in microseconds and it never sends anything anywhere.
+
+It is deliberately lopsided. Saying "this turn is hard" costs nothing, because the turn keeps
+the model it arrived with. Saying "this turn is easy" can send real work to a model that
+cannot do it. So only narrow, recognisable shapes of prompt ever clear the gate for "easy".
+
+The practical consequence is in [Prompt-driven routing](/docs/routing/routing#how-often-it-actually-fires):
+most ordinary coding prompts are not routed at all, and that is the intended behaviour.
+
+## The confidence gate
+
+```bash
+tokunseba config set judge.gate_threshold 0.8   # the default
+```
+
+Every signal comes with a confidence. **A signal below the gate is discarded entirely**, not
+used with low weight. An unsure judge matches no rule, and the turn keeps the model it
+arrived with.
+
+Lowering the gate makes routing fire more often and makes it wrong more often. Raising it
+does the reverse. 0.8 is where the shipped rules were calibrated.
+
+## The local judge
+
+An optional small language model that reads the prompt rather than matching patterns in it.
+It runs entirely on your machine.
+
+<Callout type="warn">
+It costs about **808 MB of download** and roughly **2.2 GB of resident memory** while loaded,
+and it pulls PyTorch in as a dependency. Nothing is downloaded until you ask for it by name.
+</Callout>
+
+```bash
+tokunseba judge status     # whether it is on, what it costs here, what it is used for
+tokunseba judge enable     # states the cost, asks, then turns it on
+tokunseba judge install    # download the weights ahead of time
+tokunseba judge disable    # off; memory comes back on the next proxy restart
+tokunseba judge remove     # delete the weights from disk
+```
+
+`judge enable` refuses before writing anything if the `laya` extra is not installed:
+
+```bash
+uv tool install "tokunseba[laya]"
+```
+
+### What it is used for, and what it is not
+
+The local judge is only ever asked questions whose wrong answer costs tokens rather than
+correctness:
+
+- what domain is this prompt in
+- how difficult is it
+- does it need tools
+- is it sensitive
+- does this tool result look like it is addressing the assistant
+
+It never rewrites your prompt, never produces text that reaches the provider, and never sees
+anything the proxy was not already handling.
+
+### Options
+
+| Flag | What it does |
+|---|---|
+| `--warm` | Load the weights when the proxy starts rather than on first use. Costs the memory from startup, saves a one-time pause later. |
+| `--device cpu\|mps\|cuda` | Force a device. The default picks the best available. |
+| `--no-download` | Turn it on but do not fetch the weights now. |
+| `-y` | Skip the confirmation. |
+
+### When it fails
+
+If the local judge errors or exceeds `judge.timeout` (5 seconds by default), the
+conservative path is taken: no signal, no routing, and a `judge_error` event. A judge that
+cannot answer is treated exactly like a judge that is unsure.
+
+## Which backend is used
+
+```bash
+tokunseba config set judge.backends rules,laya
+```
+
+They are tried in order and the first that is available and confident wins. With the default
+list, `laya` is only consulted when it is enabled and loaded; otherwise `rules` answers alone.
+
+## Finding out whether it is worth it
+
+```bash
+tokunseba advise --since 30d
+```
+
+Runs the judge offline over conversations that already happened. It sends nothing, adds no
+latency, and cannot change an answer. It reports what your prompts looked like, how confident
+the judge was, and how much context the turns it would have moved were carrying.
+
+It also tells you, in plain terms, where the judge is reliable on this machine and where it
+is not. Domain is usually a usable routing signal; difficulty is usually only a hint.

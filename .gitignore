@@ -6,3 +6,10 @@
 .venv/
 __pycache__/
 dist/
+
+# the site's build output and dependencies
+site/node_modules/
+site/.next/
+site/out/
+site/next-env.d.ts
+site/.source/

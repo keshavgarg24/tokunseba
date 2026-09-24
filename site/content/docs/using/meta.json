@@ -1,0 +1,12 @@
+{
+  "title": "Ways to use it",
+  "pages": [
+    "tools",
+    "wrap",
+    "gui-apps",
+    "library",
+    "mcp",
+    "hooks"
+  ],
+  "defaultOpen": true
+}

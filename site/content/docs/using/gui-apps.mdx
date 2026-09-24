@@ -1,0 +1,61 @@
+---
+title: Applications from the Dock
+description: Why a GUI-launched tool ignores everything you configured, and the fix.
+---
+
+If you start your AI tool from the Dock, Spotlight, the Start menu or a desktop launcher
+rather than by typing its name in a terminal, it is **not started by a shell**. It never
+reads `~/.zshrc`, `~/.bashrc` or your shell profile, so it never sees the block `init` added
+there.
+
+The tool goes straight to the provider, everything works normally, and every tokunseba report
+reads zero. Nothing anywhere says why.
+
+## Checking
+
+```bash
+tokunseba apps status
+```
+
+tells you what an application launched from the Dock would actually connect to, as opposed to
+what a terminal would.
+
+## Fixing it
+
+```bash
+tokunseba apps on
+```
+
+Sets the base URLs at the **login session** level, so processes started by the desktop
+environment inherit them. It prints exactly what it will change, asks first, and changes
+nothing if you say no.
+
+```bash
+tokunseba apps off
+```
+
+removes it again. `tokunseba off` and `tokunseba uninstall` also clear it.
+
+<Callout type="warn">
+This changes something for every process you start from the desktop, not just your AI tools.
+That is why it is a separate command with its own confirmation rather than part of `init`.
+The variables it sets are only base URLs pointing at `127.0.0.1`, and anything that does not
+read them is unaffected.
+</Callout>
+
+## Log out and back in
+
+On macOS the login-session environment is read when the session starts. Applications already
+running, and applications launched before you log out and back in, will not have picked it
+up. `tokunseba apps status` will keep telling you the truth about what is actually set.
+
+## The alternative
+
+If you would rather not change anything session-wide, start the tool from a terminal, or
+wrap it:
+
+```bash
+tokunseba wrap claude
+```
+
+which sets the variables on that one process and nothing else.

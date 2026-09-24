@@ -1,0 +1,9 @@
+{
+  "title": "Watching it",
+  "pages": [
+    "dashboard",
+    "reports",
+    "signals"
+  ],
+  "defaultOpen": true
+}

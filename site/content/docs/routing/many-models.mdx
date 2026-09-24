@@ -1,0 +1,242 @@
+---
+title: Many models at once
+description: A subscription, an API key, and something running locally, in one setup.
+---
+
+This is the setup tokunseba was built for. You have Claude Code on a subscription, an API key
+for something else, and a model running locally through Ollama or LM Studio. Three different
+providers, three different protocols, and one agent that only knows how to talk to one of
+them.
+
+Here is how all three end up usable from the same session.
+
+## The situation
+
+| What you have | Speaks | Good for |
+|---|---|---|
+| Claude Code, on a subscription | Anthropic | Hard turns, long reasoning, big refactors |
+| A DeepSeek or OpenAI API key | OpenAI | Cheap bulk turns, straightforward edits |
+| `qwen3-coder:30b` in Ollama | Ollama (OpenAI compatible) | Anything you would rather not send anywhere |
+
+Without tokunseba, Claude Code can only reach the first one. The API key sits unused because
+the client cannot address that endpoint, and the local model sits unused because the endpoint
+cannot read the client.
+
+## Step 1: tell tokunseba what you have
+
+```bash
+tokunseba models add deepseek https://api.deepseek.com
+tokunseba models add lmstudio http://127.0.0.1:1234
+tokunseba models list --check
+```
+
+`ollama` is already configured at `http://127.0.0.1:11434`. `--check` asks each endpoint
+whether it answers. It sends no key and no prompt.
+
+<Callout>
+Only the address is stored. Keys stay wherever your client already keeps them and are
+forwarded from the request, so nothing secret is written to disk by this command.
+</Callout>
+
+```ansi
+ upstream    kind        address                      answers
+ anthropic   anthropic   https://api.anthropic.com    yes
+ openai      openai      https://api.openai.com       yes
+ deepseek    openai      https://api.deepseek.com     yes
+ ollama      ollama      http://127.0.0.1:11434       yes
+ lmstudio    openai      http://127.0.0.1:1234        no
+
+ models seen in the last 7d
+ claude-sonnet-5     anthropic   412 requests
+ qwen3-coder:30b     ollama       88 requests
+```
+
+The `kind` is guessed from the URL and can be forced with `--kind`.
+
+## Step 2: decide what goes where
+
+Think in terms of **what a turn is**, not what a model costs. Three rules, in order:
+
+```bash
+# 1. Anything about infrastructure goes to the local model.
+#    It is the work you are least comfortable sending out, and the
+#    domain the judge is most confident about.
+tokunseba route add --domain devops --to ollama --model qwen3-coder:30b
+
+# 2. Small talk and one-line acknowledgements go to the cheap API.
+tokunseba route add --domain chitchat --to deepseek --model deepseek-chat
+
+# 3. Anything the judge scores trivial and that needs no tools
+#    stays on the same provider but drops to the small model.
+tokunseba route add --max-difficulty 0 --needs-tools no --model claude-haiku-4-5
+```
+
+Everything that matches none of them keeps the model the request arrived with. That is the
+default and it is the safe one.
+
+## Step 3: look at the rules before enabling them
+
+```bash
+tokunseba route
+```
+
+```ansi
+ #  when                                      goes to
+ 1  domain=devops                             ollama / qwen3-coder:30b
+ 2  domain=chitchat                           deepseek / deepseek-chat
+ 3  difficulty<=0 and needs_tools=no          same upstream / claude-haiku-4-5
+
+ routing is DISABLED. Rules are kept and simply do not fire.
+ judged by: rules
+```
+
+Test any prompt against them. This sends nothing anywhere:
+
+```bash
+tokunseba route test "why is the expiry test failing"
+tokunseba route test "bump the docker base image to bookworm"
+tokunseba route test "thanks, that worked"
+```
+
+Then find out what would actually have happened across your own history:
+
+```bash
+tokunseba advise --since 30d
+```
+
+That reads conversations you have already had, judges their opening prompts offline, and
+reports how many would have moved and how much context they were carrying. It sends nothing
+and changes nothing.
+
+## Step 4: turn it on
+
+```bash
+tokunseba tier enable 3
+tokunseba route enable
+tokunseba restart
+```
+
+Both commands print what they are about to permit and ask before doing it.
+
+## What happens on a turn
+
+<Steps>
+<Step>
+### The request arrives
+
+Claude Code sends an Anthropic-shaped request to `127.0.0.1:7777/anthropic`. tokunseba
+notices it is the first turn of a new conversation, so routing is eligible.
+</Step>
+
+<Step>
+### The opening prompt is judged
+
+Domain, difficulty, whether tools are needed, whether it is sensitive. Each with a
+confidence. Anything below the gate is thrown away rather than used.
+</Step>
+
+<Step>
+### Rules are tried in order
+
+The first rule whose every condition is met wins. If none match, nothing changes.
+</Step>
+
+<Step>
+### The pair is checked
+
+Can an Anthropic-shaped request reach an Ollama endpoint? Directly, no. Through translation,
+yes. If neither, the rule is refused and the turn keeps its original model, recorded as
+`route_refused`. A rule can never send a turn somewhere that would only reject it.
+</Step>
+
+<Step>
+### The request is translated and sent
+
+System prompt, tool definitions, tool calls, tool results, images, stop reasons and usage are
+all mapped into the target protocol. Recorded as `protocol_translated`.
+</Step>
+
+<Step>
+### The reply is translated back
+
+Event by event if it is streaming, so it still arrives a token at a time. Claude Code cannot
+tell that anything happened.
+</Step>
+</Steps>
+
+## Which pairs actually work
+
+| Client sends | Reaches directly | Reaches by translation |
+|---|---|---|
+| Anthropic | Anthropic | OpenAI, Ollama, and anything OpenAI-compatible |
+| OpenAI | OpenAI, Ollama | Anthropic |
+| Ollama | Ollama, OpenAI | Anthropic |
+| Gemini | Gemini | — |
+
+"Anything OpenAI-compatible" includes Ollama, LM Studio, vLLM, llama.cpp's server, DeepSeek,
+Together, Groq and OpenRouter. If it serves `/v1/chat/completions`, it is reachable.
+
+See [Across protocols](/docs/routing/protocols) for exactly what is mapped and what is
+deliberately dropped.
+
+## Two rules that keep translation honest
+
+**Dropping a field is allowed, inventing one is not.** Nothing reaches the model that you did
+not send. A field the far end has no equivalent for, such as an extended-thinking block, is
+left behind rather than faked.
+
+**Tool-call identifiers travel through untouched, both ways.** The client hands them straight
+back on the next turn and the far end has to recognise them, so prettifying one would break
+the conversation two turns later.
+
+## Local models need one more thing
+
+A local model usually has a much smaller context window than the cloud model the request was
+built for. tokunseba applies a tighter truncation budget when the destination is local:
+
+```bash
+tokunseba config show | grep local_truncate_tokens
+# local_truncate_tokens = 1500
+```
+
+and records `context_overflow_risk` when a local model was close to silently truncating the
+prompt, which is the failure mode that produces a confidently wrong answer with no error
+anywhere.
+
+## Watching it work
+
+```bash
+tokunseba stats --since 24h
+```
+
+The signals tell you what actually happened:
+
+| Signal | Meaning |
+|---|---|
+| `route_signal` | The opening prompt was judged |
+| `rule_routed` | A rule matched and the turn went where it said |
+| `local_routed` | An easy turn went to the local model |
+| `model_routed` | The model was swapped on the same upstream |
+| `protocol_translated` | The turn was rewritten into another protocol and back |
+| `route_refused` | A rule matched but the target was unusable |
+
+And `tokunseba models list` shows which models actually answered, which is the honest answer
+to "what am I running" as opposed to what the config says is available.
+
+## If you would rather not use rules
+
+Two simpler switches exist. Both require tier 3.
+
+```bash
+# Swap one model for another on the same provider, always.
+tokunseba config set tier3.model_routing true
+tokunseba config set tier3.model_map.claude-opus-5 claude-sonnet-5
+
+# Send easy small talk and writing to the local model.
+tokunseba config set tier3.local_routing true
+tokunseba config set tier3.local_model qwen3-coder:30b
+```
+
+`local_routing` is restricted to the `chitchat` and `writing` domains by design. Sending a
+debugging turn to a 30B local model because it scored "easy" is exactly the failure this
+whole design is built to avoid.

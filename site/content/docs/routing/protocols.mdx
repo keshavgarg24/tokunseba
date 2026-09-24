@@ -1,0 +1,84 @@
+---
+title: Across protocols
+description: What is mapped when a turn is rewritten into another provider's shape.
+---
+
+Claude Code speaks Anthropic to everything it talks to. Codex speaks OpenAI. That is the
+reason "send the easy turns to the local model" is usually a slide rather than a feature: the
+client cannot address the other endpoint, and the other endpoint cannot read the client.
+
+tokunseba rewrites the turn instead.
+
+## What is mapped
+
+| Anthropic | OpenAI shape |
+|---|---|
+| `system` string or blocks | a leading `system` message |
+| `messages[].content` blocks | `content` string or parts |
+| `tools[]` with `input_schema` | `tools[]` with `function.parameters` |
+| `tool_use` block | `tool_calls[]` entry with JSON string arguments |
+| `tool_result` block | a `tool` role message with `tool_call_id` |
+| image blocks, base64 and URL | `image_url` parts |
+| `stop_reason` | `finish_reason` |
+| `usage.input_tokens` / `output_tokens` | `usage.prompt_tokens` / `completion_tokens` |
+| cache read and write counts | preserved where the far end reports them |
+| error envelope | error envelope |
+
+And the reverse on the way back.
+
+## Streaming
+
+A streamed reply is **rebuilt event by event**, not buffered and re-emitted. An OpenAI
+`chat.completion.chunk` stream becomes an Anthropic `message_start` / `content_block_delta` /
+`message_delta` / `message_stop` sequence as it arrives, so the reply still appears a token
+at a time in your editor.
+
+Tool calls streamed as incremental argument fragments are reassembled into the block shape
+the client expects, with their identifiers intact.
+
+## Two rules
+
+**Dropping a field is allowed, inventing one is not.**
+
+Nothing reaches the model that you did not send. A field the far end has no equivalent for,
+such as an Anthropic extended-thinking block or a provider-specific sampling parameter, is
+left behind rather than faked with a plausible value.
+
+**Tool-call identifiers travel through untouched, both ways.**
+
+The client hands them straight back on the next turn and the far end has to recognise them.
+Normalising an id into a nicer format would work for exactly one turn and break the
+conversation on the next one.
+
+## The context meter
+
+Translated replies report usage from what the upstream actually said, not from the rewritten
+body. If the far end reports fewer fields than the client expects, the missing ones are
+absent rather than estimated, and the ledger records what was really reported.
+
+This is why the context meter in your editor keeps working across a translated turn instead
+of going blank or showing a number nobody measured.
+
+## What is refused
+
+A pair with no translator is refused before anything is sent, and recorded as
+`route_refused`. Today that means anything involving Gemini as a routing target from a
+non-Gemini client. A rule can never send a turn somewhere that would only reject it.
+
+```bash
+tokunseba models         # which of your endpoints each client protocol can reach
+```
+
+## Seeing it happen
+
+Every translated turn records:
+
+```
+protocol_translated   a turn was rewritten into the protocol its new upstream speaks,
+                      and the reply was rewritten back
+```
+
+```bash
+tokunseba stats --since 24h
+tokunseba explain <request-id>
+```

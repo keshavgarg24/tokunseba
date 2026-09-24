@@ -1,0 +1,87 @@
+---
+title: Privacy and safety
+description: What leaves the machine, what is written to disk, and what is refused.
+---
+
+## What leaves this machine
+
+Exactly one thing: the request your tool was already making, to the provider your tool
+already chose.
+
+- The proxy binds `127.0.0.1` and nothing else.
+- There is no account, no sign in, no licence check, no update ping, no telemetry, no
+  beacon, and no analytics.
+- API keys are forwarded from your tool's own headers and are never stored, logged, or
+  written to the ledger.
+
+## What is written to disk
+
+Everything in `~/.tokunseba`:
+
+| Path | Contents |
+|---|---|
+| `ledger.sqlite` | Request metadata: token counts, timings, model, tool, project path, transform kinds. Not prompt text. |
+| `blobs/` | The original text behind each handle. This *is* content. |
+| `bodies/` | Whole request bodies, for `explain` and `replay`. This *is* content. |
+| `backups/` | Copies of the config files `init` edited. |
+| `logs/` | The proxy's own log. |
+
+`blobs` and `bodies` contain your code and your tool output. They never leave the machine,
+but they are on it, so they are worth knowing about. Both have retention windows and both can
+be shortened:
+
+```bash
+tokunseba retention keep 24h --bodies 1h
+tokunseba retention show
+```
+
+## Credentials
+
+Before anything is written to `blobs` or `bodies`, the text is scanned for things that look
+like credentials: API keys, tokens, private key blocks, connection strings with passwords in
+them.
+
+If one is found, **nothing is written**. The marker in the replacement says so instead of
+naming a handle. This is recorded as `secret_detected`.
+
+With tier 3 and `tier3.redact_secrets` on, the credential is also replaced before the request
+leaves the machine, recorded as `secret_redacted`.
+
+## Prompt injection
+
+A tool result is data, not instructions. A web page, a README, or a file that contains text
+addressed to your assistant is still just a file.
+
+With tier 3 and `tier3.annotate_injections` on, tool results that look like they are
+instructing the assistant are labelled rather than silently passed through
+(`injection_suspected`). If the local judge is available it is asked whether it agrees, and
+that second opinion is recorded separately (`injection_corroborated`).
+
+tokunseba labels. It does not block, because a false positive that removes a legitimate
+result is worse than a flagged one that turns out to be fine.
+
+## What it deliberately does not do
+
+**Rewriting shell commands.** The documented way for a hook to modify a tool's input also
+requires auto-approving that input, which would bypass your own permission prompt. tokunseba
+will not do that. Use `tokunseba run -- <command>` explicitly instead.
+
+**Reading anything it was not sent.** It sees requests that pass through it. It does not
+scan your filesystem, read your shell history, or index your repositories.
+
+**Failing your request.** Any unhandled error results in the original request being
+forwarded untouched, recorded as `passthrough_after_error`.
+
+## The dashboard
+
+The browser dashboard (`tokunseba dashboard`) enforces three things rather than documenting
+them:
+
+1. The socket binds the loopback address.
+2. Every request is checked against the `Host` header it arrived with, which is what stops a
+   page you happened to be visiting from reaching in by pointing a hostname at `127.0.0.1`.
+   Same-origin rules do not cover that case.
+3. The page has no external reference in it at all. No font host, no script CDN, no beacon. A
+   test asserts this against the bytes on disk.
+
+See [The dashboard](/docs/watching/dashboard).
