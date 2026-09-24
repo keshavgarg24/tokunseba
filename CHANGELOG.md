@@ -5,6 +5,31 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- The documentation site failed to build on Node 20.18 and older with a `require() of ES
+  Module` trace pointing inside `node_modules`. Fumadocs' MDX loader is an ES module that
+  Next loads with `require()`, which Node only permits from 20.19.0 and 22.12.0 onward.
+  `npm run dev` and `npm run build` now check the version first and say so, `engines` makes
+  npm warn at install time, and there is an `.nvmrc`.
+- Three links on the site's landing page pointed at documentation paths that do not exist.
+  A checker over every internal link and heading anchor now runs against the content.
+- The version shown on the landing page was typed in by hand and would have been wrong from
+  the next release onward. It is read from `pyproject.toml` at build time.
+
+### Changed
+
+- Install instructions lead with `pip` rather than `uv` everywhere, with `uv` and `pipx`
+  offered beside it. Telling somebody to install a package manager before they can install
+  the package is a step too many for the first line of a page.
+- The site's hero carries the mark again, drawn large and faint, with the one blue bar
+  extending and retracting on a slow loop. One element moves and nothing else does.
+- A "what it costs you" section on the landing page: the latency it adds, measured; the
+  reach tier 2 gives up; what ends up on your disk; memory and disk; that an upgrade does
+  not improve what it has already seen; and the tools whose protocols cannot be reached.
+
 ## [0.1.2] - 2026-09-25
 
 ### Changed

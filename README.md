@@ -14,6 +14,12 @@
 
 ---
 
+**[Documentation](site/content/docs)** · **[Every command](site/content/docs/reference/commands.mdx)** · **[Many models at once](site/content/docs/routing/many-models.mdx)** · **[PyPI](https://pypi.org/project/tokunseba/)**
+
+The same pages render as a site: `cd site && npm install && npm run dev`.
+
+---
+
 Coding agents are heavy for a reason that has nothing to do with the model. An agent reads a file, pastes it into the conversation, reads it again four turns later, and carries the entire transcript forward on every single call. The waste is in the request, and it is the same waste in every tool you have installed.
 
 tokunseba is one process on `127.0.0.1` that sits in front of all of them, speaking the Anthropic, OpenAI, Gemini and Ollama protocols, and edits requests on their way out. Repeated tool output collapses to a handle you can expand later. Cache breakpoints get added where a client forgot them. Nothing already sent is ever rewritten, because a prompt cache matches on an exact byte prefix and breaking one wastes far more than any compression recovers.
@@ -31,10 +37,14 @@ Three things it will not do:
 ## Install
 
 ```bash
-uv tool install tokunseba
+pip install tokunseba
 tokunseba init
 tokunseba doctor
 ```
+
+`pip` is the one you already have. If you would rather keep it out of the environment your
+projects use, `uv tool install tokunseba` or `pipx install tokunseba` put the command on your
+path in an environment of its own. Any of the three works.
 
 `init` detects the AI tools installed on this machine, points them at the proxy, backs up every file it touches, and starts the proxy in the background. It prints each change before making it. `tokunseba off` reverses all of it in one command.
 

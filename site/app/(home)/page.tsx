@@ -1,9 +1,12 @@
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
+import { Backdrop } from '@/components/backdrop';
 import { CopyCommand } from '@/components/copy-command';
+import { Install } from '@/components/install';
 import { Surfaces, type Surface } from '@/components/surfaces';
 import { B, C, G, K, Terminal } from '@/components/terminal';
 import { repoUrl } from '@/lib/shared';
+import { packageVersion } from '@/lib/version';
 
 const PROPERTIES = [
   {
@@ -97,6 +100,33 @@ const SURFACES: Surface[] = [
   },
 ];
 
+const COSTS = [
+  {
+    t: 'Latency, in single milliseconds',
+    d: 'Measured on this pipeline: 0.6 ms at the median for a turn carrying one file read and one test run, 3.1 ms for a ten-turn transcript of 339 KB. It is not zero, and against a provider round trip of one to four seconds it is not something you will feel.',
+  },
+  {
+    t: 'Reach, at tier 2',
+    d: 'A summarised log and an outlined file are one call away rather than already in the context. If the answer depended on line 4,000, the assistant has to ask for it. That is a real cost and it is why tier 2 has its own switch.',
+  },
+  {
+    t: 'Your code, on your disk',
+    d: 'The originals behind handles live in ~/.tokunseba/blobs, and stored request bodies include your prompts. They never leave the machine, but they are on it. Both have retention windows and both can be shortened or turned off.',
+  },
+  {
+    t: 'Memory and disk',
+    d: 'About 40 MB installed and roughly 60 MB resident. The optional local judge is a separate opt-in: 808 MB of weights and about 2.2 GB of memory while loaded, downloaded only when you ask for it by name.',
+  },
+  {
+    t: 'An upgrade does not improve what it has already seen',
+    d: 'The same original always produces the same replacement, forever, because a prompt cache matches on an exact byte prefix. New content gets new behaviour; history keeps what it had.',
+  },
+  {
+    t: 'Some tools cannot be reached at all',
+    d: 'Copilot, Cursor and Windsurf talk to their own backends over closed protocols. A proxy can only sit in front of a client whose protocol it can parse. tokunseba says so rather than listing them as coming soon.',
+  },
+];
+
 const REMOVED = [
   ['A file read twice', 'The second copy becomes a pointer to the first', 'dedup_ref'],
   ['A file read again after an edit', 'Only the diff since the model last saw it', 'diff_ref'],
@@ -107,18 +137,21 @@ const REMOVED = [
 ];
 
 export default function HomePage() {
+  const version = packageVersion();
+
   return (
     <main className="flex flex-1 flex-col">
       {/* ------------------------------------------------------------- hero */}
       <section className="relative overflow-hidden border-b border-fd-border">
         <div className="tk-grid-bg" />
+        <Backdrop />
         <div className="tk-shell relative py-20 text-center sm:py-28">
           <Link
             href="/docs"
             className="inline-flex items-center gap-2 rounded-full border border-fd-border bg-fd-card px-3.5 py-1.5 text-xs text-fd-muted-foreground transition-colors hover:text-fd-foreground"
           >
             <span className="size-1.5 rounded-full bg-fd-primary" />
-            v0.1.2 is on PyPI
+            {version ? `v${version} is on PyPI` : 'Read the documentation'}
             <ArrowRight className="size-3" />
           </Link>
 
@@ -135,7 +168,7 @@ export default function HomePage() {
           </p>
 
           <div className="mx-auto mt-9 max-w-md">
-            <CopyCommand cmd="uv tool install tokunseba" />
+            <Install />
           </div>
 
           <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
@@ -191,7 +224,7 @@ export default function HomePage() {
               text the model has already seen or never needed.
             </p>
             <Link
-              href="/docs/how-it-works"
+              href="/docs/pipeline/how-it-works"
               className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-fd-primary hover:underline"
             >
               How the pipeline decides
@@ -289,13 +322,43 @@ export default function HomePage() {
               reply is rebuilt event by event rather than buffered.
             </p>
             <Link
-              href="/docs/routing"
+              href="/docs/routing/routing"
               className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-fd-primary hover:underline"
             >
               How routing decides
               <ArrowRight className="size-3.5" />
             </Link>
           </div>
+        </div>
+      </section>
+
+      {/* ----------------------------------------------------------------- costs */}
+      <section className="border-t border-fd-border bg-fd-muted/20">
+        <div className="tk-shell py-20 sm:py-24">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-fd-primary">
+            What it costs you
+          </p>
+          <h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-balance">
+            Nothing is free, including this
+          </h2>
+          <p className="mt-4 max-w-2xl text-fd-muted-foreground">
+            Every one of these is a real trade, measured where it can be measured. If a page
+            about a tool only lists what it gives you, it is an advertisement.
+          </p>
+          <div className="mt-10 grid gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
+            {COSTS.map((c) => (
+              <div key={c.t}>
+                <h3 className="text-base font-semibold tracking-tight">{c.t}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-fd-muted-foreground">{c.d}</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-10 max-w-3xl text-sm text-fd-muted-foreground">
+            And the honest headline: <strong className="text-fd-foreground">savings depend
+            entirely on what you do</strong>. Long agentic sessions with heavy tool use are
+            where the wins are. A short chat saves almost nothing, and no setting changes
+            that. Which is why the control arm exists rather than a number on this page.
+          </p>
         </div>
       </section>
 
@@ -310,11 +373,11 @@ export default function HomePage() {
             starts the proxy in the background. <code>tokunseba off</code> puts it all back.
           </p>
           <div className="mx-auto mt-8 grid max-w-md gap-2.5">
-            <CopyCommand cmd="uv tool install tokunseba" />
+            <Install compact />
             <CopyCommand cmd="tokunseba init" />
           </div>
           <Link
-            href="/docs/install"
+            href="/docs/start/install"
             className="mt-7 inline-flex items-center gap-2 rounded-lg bg-fd-primary px-4 py-2.5 text-sm font-medium text-fd-primary-foreground transition-opacity hover:opacity-90"
           >
             Installation guide

@@ -1,11 +1,12 @@
 {
   "name": "tokunseba-site",
-  "version": "0.0.33",
+  "version": "0.0.0",
   "private": true,
   "scripts": {
-    "build": "next build",
-    "dev": "next dev",
+    "dev": "node scripts/check-node.mjs && next dev",
+    "build": "node scripts/check-node.mjs && next build",
     "start": "serve out",
+    "preview": "node scripts/check-node.mjs && next build && serve out",
     "types:check": "next typegen && tsc --noEmit"
   },
   "dependencies": {
@@ -28,5 +29,9 @@
     "serve": "^14.2.6",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2"
-  }
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "description": "The tokunseba website: landing page and documentation."
 }

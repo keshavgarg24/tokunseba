@@ -5,17 +5,26 @@ no backend.
 
 ```bash
 cd site
+nvm use                  # there is an .nvmrc
 npm install
 npm run dev              # http://localhost:3000
 npm run build            # writes out/
-npx serve out            # serve the built output
+npm run preview          # build, then serve out/
 ```
 
 `npm run build` produces a plain directory of files in `out/`, so it can be served by
 Vercel, Netlify, Cloudflare Pages, GitHub Pages, or any web server. There is nothing to run
 and nothing to configure.
 
-Requires Node 20.19 or newer.
+## Node 20.19 or newer
+
+Not optional, and the reason is worth knowing. Fumadocs' MDX loader is an ES module and Next
+loads it with `require()`. Node only permits that from **20.19.0** and **22.12.0** onward. On
+anything older the build dies inside `node_modules` with a `require() of ES Module ... not
+supported` trace that says nothing about what to do.
+
+`npm run dev` and `npm run build` check the version first and print an actionable message
+instead, and `engines` in package.json makes npm warn at install time.
 
 ## Layout
 
@@ -41,6 +50,11 @@ Requires Node 20.19 or newer.
 - **`content/docs/reference/commands.mdx` is generated** from the command definitions
   themselves, so it cannot drift from what the tool accepts. Regenerate it after adding or
   changing a command.
+- **The version on the landing page is read from `../pyproject.toml` at build time**
+  (`lib/version.ts`), so it cannot be left behind by a release. When the site is built
+  outside the repository the pill simply does not show a version.
+- **Install instructions lead with `pip`**, because that is the one everybody already has.
+  `uv` and `pipx` are offered next to it rather than instead of it.
 
 ## Search
 

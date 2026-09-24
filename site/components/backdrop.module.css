@@ -1,0 +1,36 @@
+/* The mark, drawn large behind the hero and barely there. One thing moves: the blue bar
+   that the two chevrons narrow into, which is the whole point of the shape. It extends,
+   holds, and retracts on a slow loop.
+
+   Nothing else animates. No gradient, no particles, no drifting anything. */
+.wrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.mark {
+  position: absolute;
+  right: -4%;
+  top: 50%;
+  translate: 0 -50%;
+  width: min(30rem, 52%);
+  height: auto;
+  opacity: 0.05;
+}
+
+.bar {
+  transform-origin: 39px 32px;
+  animation: reach 7s cubic-bezier(0.5, 0, 0.3, 1) infinite;
+}
+
+@keyframes reach {
+  0%, 12% { scale: 0 1; opacity: 0; }
+  38%, 72% { scale: 1 1; opacity: 1; }
+  92%, 100% { scale: 0 1; opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar { animation: none; }
+}

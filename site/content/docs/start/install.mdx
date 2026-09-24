@@ -17,6 +17,10 @@ ask for by name, and it is covered in [The judge](/docs/routing/judge).
 
 ## Install
 
+```bash tab="pip"
+pip install tokunseba
+```
+
 ```bash tab="uv"
 uv tool install tokunseba
 ```
@@ -25,19 +29,19 @@ uv tool install tokunseba
 pipx install tokunseba
 ```
 
-```bash tab="pip"
-pip install tokunseba
-```
-
-`uv tool install` is the recommended one: it puts `tokunseba` on your path in its own
-environment, so it cannot collide with the packages your projects depend on.
+All three work. `pip` is the one you already have, and it installs into whichever
+environment is active. `uv tool install` and `pipx install` put `tokunseba` on your path in
+an environment of its own, so it cannot collide with the packages your projects depend on;
+that is better, but it means installing another tool first.
 
 ### Optional extras
 
 ```bash
-uv tool install "tokunseba[mcp]"    # the MCP server, for agents with no shell
-uv tool install "tokunseba[laya]"   # the local judge model
+pip install "tokunseba[mcp]"     # the MCP server, for agents with no shell
+pip install "tokunseba[laya]"    # the local judge model
 ```
+
+Substitute `uv tool install` or `pipx install` if that is how you installed it.
 
 <Callout type="warn">
 The `laya` extra pulls in PyTorch and, on first use, downloads about 808 MB of weights and
