@@ -18,7 +18,8 @@ def flat(text: str) -> str:
 
 
 def test_version_and_help():
-    assert "0.1.0" in run(["--version"]).output
+    from tokunseba import __version__
+    assert __version__ in run(["--version"]).output
     assert "One local proxy in front of every AI coding tool" in run(["--help"]).output
 
 

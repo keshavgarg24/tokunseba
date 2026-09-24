@@ -4,6 +4,7 @@ The whole value of an outline is that the model can still see what is in the fil
 that removes a signature, a decorator or an import has not compressed the file, it has
 hidden it, and every test here is a way of saying that.
 """
+import re
 import textwrap
 
 import pytest
@@ -233,3 +234,34 @@ def test_a_minified_bundle_is_not_treated_as_source():
 
 def test_language_needs_a_path_because_content_alone_is_ambiguous():
     assert outline.language(None, "def f():\n    pass\n" * 80) is None
+
+
+def test_a_gutter_survives_the_trailing_whitespace_strip_that_runs_before_this():
+    """The regression that made outlining silently never fire in the proxy.
+
+    Canonicalisation rstrips every line before the pipeline gets here, so the gutter on a
+    blank source line arrives as a bare number with its tab gone. Those lines then failed
+    to match, the match rate fell under the threshold on any file with blank lines in it,
+    and every guttered file fell through to the summariser instead. It passed the unit
+    tests because they built the gutter themselves and never rstripped it.
+    """
+    from tokunseba.transform.canonical import canonicalize
+    guttered = canonicalize(_gutter(_py()))
+    assert re.search(r"^\s*\d+$", guttered, re.M), \
+        "the fixture needs a blank source line, stripped bare, or this tests nothing"
+    out, folded, bodies = outline.outline("python", guttered, "h")
+    assert folded > 0 and bodies == 4
+
+
+@pytest.mark.parametrize("sep", ["\t", "\u2192", " | ", "|"])
+def test_every_spelling_of_a_line_number_gutter_is_recognised(sep):
+    """A separator is required on a line with code on it; only a blank line may lose it."""
+    src = _py()
+    guttered = "\n".join(f"{i:6d}{sep}{line}" if line.strip() else f"{i:6d}"
+                         for i, line in enumerate(src.split("\n"), 1))
+    assert outline.outline("python", guttered, "h")[1] > 0
+
+
+def test_a_file_of_bare_numbers_without_a_path_is_still_not_outlined():
+    """The end-of-line branch must not turn a column of integers into a gutter."""
+    assert outline.language(None, "\n".join(str(i) for i in range(200))) is None

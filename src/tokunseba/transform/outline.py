@@ -219,7 +219,13 @@ def _brace_folds(text: str) -> list[tuple[int, int]]:
 #: `cat -n` style gutters, which is how most coding agents hand a file to the model. The
 #: fold has to be computed on the source underneath them, or the parse fails and a file that
 #: was read the usual way is never outlined at all.
-_GUTTER = re.compile(r"^(\s*\d+(?:\t|\u2192|\s*\|\s?))")
+#:
+#: The final alternative, end of line, is not padding. Canonicalisation strips trailing
+#: whitespace from every line before this runs, so the gutter on a blank source line loses
+#: its separator and arrives as a bare number. Without that branch those lines fail to match,
+#: the match rate falls under the threshold on any file with blank lines in it, and nothing
+#: is ever outlined -- which is precisely what happened the first time this shipped.
+_GUTTER = re.compile(r"^\s*\d+(?:\t|\u2192|\s*\|\s?|$)")
 
 
 def _ungutter(lines: list[str]) -> tuple[list[str], bool]:

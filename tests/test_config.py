@@ -50,3 +50,16 @@ def test_base_url_helper(home):
 
 def test_home_is_private(home):
     assert config.home().exists()
+
+
+def test_the_package_version_and_the_build_metadata_do_not_drift():
+    """Two files carry the version. The release refuses a tag that does not match pyproject,
+    so if `__version__` were the one left behind, `tokunseba --version` would quietly report
+    the previous release for the life of the next one."""
+    import tomllib
+    from pathlib import Path
+
+    from tokunseba import __version__
+    root = Path(__file__).resolve().parents[1]
+    declared = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
+    assert __version__ == declared

@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-09-24
+
+### Fixed
+
+- Source files were never outlined through the proxy. The fold is computed on the source
+  under a `cat -n` style line-number gutter, which is how most coding agents hand a file
+  over, but canonicalisation strips trailing whitespace from every line first, so the
+  gutter on a blank source line arrived as a bare number with its separator gone. Those
+  lines stopped matching, the match rate fell below the threshold on any file with blank
+  lines in it, and every guttered file fell through to the summariser instead. The unit
+  tests missed it because they built their own gutters and never stripped them; an end to
+  end run against the published wheel is what caught it.
+- The dashboard no longer depends on the machine answering a liveness probe. A network
+  stack that raises rather than refusing left the page blank instead of merely saying the
+  proxy was not running.
+
 ## [0.1.0] - 2026-09-24
 
 First public release.
@@ -163,4 +179,5 @@ First public release.
   `tokunseba start --foreground`, and exits non-zero. `stop`, `uninstall` and the `init`
   disclosure say the same thing rather than naming a file that does nothing.
 
+[0.1.1]: https://github.com/keshavgarg24/tokunseba/releases/tag/v0.1.1
 [0.1.0]: https://github.com/keshavgarg24/tokunseba/releases/tag/v0.1.0

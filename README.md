@@ -7,7 +7,7 @@
 [![PyPI](https://img.shields.io/pypi/v/tokunseba)](https://pypi.org/project/tokunseba/)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-867%20passing-brightgreen)](#development)
+[![Tests](https://img.shields.io/badge/tests-874%20passing-brightgreen)](#development)
 [![Local only](https://img.shields.io/badge/network-localhost%20only-lightgrey)](#privacy-and-safety)
 
 </div>

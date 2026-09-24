@@ -68,17 +68,24 @@ def overview(ledger, cfg, since: str = "7d") -> dict:
     answer questions that are only comparable if they were asked at the same moment.
     """
     from .. import __version__
-    from ..service import running
     since_ts = parse_since(since)
+    # Both of these read the machine rather than the ledger, and the dashboard is still
+    # worth drawing if either one cannot answer. A page that goes blank because a health
+    # probe tripped over an unusual network stack is worse than one that says less.
     try:
         from ..health import check
         problem = check(cfg, ledger).problem or ""
-    except Exception:  # noqa: BLE001 - a broken health probe must not blank the dashboard
+    except Exception:  # noqa: BLE001
         problem = ""
+    try:
+        from ..service import running
+        up = running(cfg.port)
+    except OSError:
+        up = False
     return {
         "version": __version__,
         "port": cfg.port,
-        "running": running(cfg.port),
+        "running": up,
         "problem": problem,
         "since": since,
         "stats": ledger.stats(since_ts),

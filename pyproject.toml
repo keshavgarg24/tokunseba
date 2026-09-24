@@ -1,6 +1,6 @@
 [project]
 name = "tokunseba"
-version = "0.1.0"
+version = "0.1.1"
 description = "A local proxy for every AI coding tool on your machine: it shrinks each request without losing a byte, and routes each turn to the model that turn actually needs"
 readme = "README.md"
 authors = [{ name = "tokunseba contributors" }]
