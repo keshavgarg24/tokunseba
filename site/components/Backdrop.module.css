@@ -1,0 +1,70 @@
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.glyph {
+  position: absolute;
+  right: -7%;
+  top: 50%;
+  translate: 0 -50%;
+  width: min(52rem, 82%);
+  height: auto;
+  opacity: .13;
+}
+
+/* The mark writes itself, holds, fades, and starts again. It fades out rather than
+   retracting: a retracting stroke with round caps ends as a floating blob the size of the
+   stroke, which at this scale is a circle the size of a fist and reads as a bug. */
+.trace path {
+  stroke-dasharray: 80;
+  stroke-dashoffset: 80;
+  animation: draw 13s cubic-bezier(.62, 0, .3, 1) infinite;
+}
+.trace path:nth-child(2) { animation-delay: .5s; }
+.trace path:nth-child(3) { animation-delay: 1s; }
+
+/* The blue bar is the output the two chevrons narrow into. It arrives last. */
+.bar {
+  stroke-dasharray: 26;
+  stroke-dashoffset: 26;
+  animation: draw 13s cubic-bezier(.62, 0, .3, 1) 1.5s infinite;
+}
+
+@keyframes draw {
+  0%        { stroke-dashoffset: 80; opacity: 0; }
+  5%        { opacity: 1; }
+  26%, 82%  { stroke-dashoffset: 0; opacity: 1; }
+  93%, 100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+.stream { position: absolute; inset: 0; opacity: .38; }
+
+.tok {
+  position: absolute;
+  left: 0;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .3);
+  animation-name: flow;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.clean { height: 4px; background: #7FB0FF; box-shadow: 0 0 12px rgba(127, 176, 255, .55); }
+
+@keyframes flow {
+  0%   { transform: translateX(-16vw); opacity: 0; }
+  9%   { opacity: .9; }
+  86%  { opacity: .9; }
+  100% { transform: translateX(114vw); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trace path, .bar { animation: none; stroke-dashoffset: 0; }
+  .stream { display: none; }
+}
