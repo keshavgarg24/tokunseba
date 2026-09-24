@@ -118,7 +118,7 @@ export default function HomePage() {
             className="inline-flex items-center gap-2 rounded-full border border-fd-border bg-fd-card px-3.5 py-1.5 text-xs text-fd-muted-foreground transition-colors hover:text-fd-foreground"
           >
             <span className="size-1.5 rounded-full bg-fd-primary" />
-            v0.1.1 is on PyPI
+            v0.1.2 is on PyPI
             <ArrowRight className="size-3" />
           </Link>
 
