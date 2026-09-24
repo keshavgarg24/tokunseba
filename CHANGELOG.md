@@ -5,7 +5,9 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0] - 2026-09-24
+
+First public release.
 
 ### Added
 
@@ -79,63 +81,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   question for scripts and images. It used to start writing to the home directory
   immediately, which is a poor introduction for the first command anybody runs.
 
-### Fixed
-
-- `retention show` crashed with a `TypeError` on any non-empty ledger: the oldest day
-  arrived as a unix timestamp and went straight to rich's markup escaper. It now reads
-  as a date and says how long ago that was. The unit tests only ever ran it on an empty
-  ledger, which is why it shipped.
-- `verify` footnoted an advisory failure with the check's name, so six cache drift
-  signals were reported as `(no cache drift)`. It now prints what actually happened.
-- `apps` blamed the operating system when `TOKUNSEBA_NO_SESSION_ENV` was what stopped
-  it, telling macOS users macOS could not do this.
-
-### Fixed
-
-- Python 3.14 is supported. `requires-python` said `<3.14`, so on a machine whose `python3`
-  is 3.14 -- which is now common -- `pip install tokunseba` refused before it started.
-  Every dependency publishes 3.14 wheels and the suite passes on it, so the ceiling was
-  only ever conservative. CI runs 3.12, 3.13 and 3.14.
-- Two judge tests read whether the laya extra happened to be installed on the machine
-  running them. They passed for whoever had run `uv sync --all-extras` and failed for
-  everyone else, CI included. They pin it now, like the tests either side of them do.
-
-- On a machine with no user service manager, `tokunseba start` wrote a systemd unit that
-  could never run and then reported `Started via ... (start failed: [WinError 2] ...)`.
-  It now says there is nothing to keep the proxy alive here, points at
-  `tokunseba start --foreground`, and exits non-zero. `stop`, `uninstall` and the `init`
-  disclosure say the same thing rather than naming a file that does nothing.
-
-### Removed
-
-- Everything that was denominated in a currency, and the rate table behind it. One rate
-  is right for exactly one kind of access and quietly wrong for every other, so the
-  `--money` flag, `pricing.py`, the `pricing` config section and the `cost_usd` and
-  `counterfactual_usd` ledger columns are all gone. Results are reported in tokens, ratios
-  and time, which mean the same thing to everybody. A test fails if any of it returns.
-- The vocabulary as well as the figures. A smaller model is described as smaller, a faster
-  path as faster and a lighter encoding as lighter, because that is the actual property and
-  it is true whatever your access looks like. The guard covers the package and the docs.
-- The generated design and plan documents under `docs/`. They described the code as it
-  was going to be written, not as it is, and shipped in the source distribution.
-
-### Changed
-
-- `budget.daily_usd` becomes `budget.daily_tokens`: a ceiling on tokens read and written
-  in a day, counted from the ledger and including cache reads.
-
-- The "configured but nothing has come through" message now names the Dock case, which
-  is the commonest reason for a correct install that records nothing.
-- `tokunseba stop` says that routed tools will fail to connect while the proxy is down
-  rather than falling back to the provider, and asks before stopping. `-y` skips it.
-- `tokunseba off` and `tokunseba uninstall` also clear the login-session variables.
-
-
-## [0.1.0] - 2026-09-22
-
-First public release.
-
-### Added
 
 - Local HTTP proxy on `127.0.0.1` with one path prefix per upstream provider
   (`/anthropic`, `/openai`, `/gemini`, `/ollama`, `/custom/<name>`). Unknown paths
@@ -168,5 +113,54 @@ First public release.
   `watch`, `explain`, `expand`, `advise`, `verify`, `run`, `config`, `on`, `off`,
   `prune`, `hook`, `mcp`, `uninstall`.
 
-[Unreleased]: https://github.com/keshavgarg24/tokunseba/compare/v0.1.0...HEAD
+### Changed
+
+- `budget.daily_usd` becomes `budget.daily_tokens`: a ceiling on tokens read and written
+  in a day, counted from the ledger and including cache reads.
+
+- The "configured but nothing has come through" message now names the Dock case, which
+  is the commonest reason for a correct install that records nothing.
+- `tokunseba stop` says that routed tools will fail to connect while the proxy is down
+  rather than falling back to the provider, and asks before stopping. `-y` skips it.
+- `tokunseba off` and `tokunseba uninstall` also clear the login-session variables.
+
+### Removed
+
+- Everything that was denominated in a currency, and the rate table behind it. One rate
+  is right for exactly one kind of access and quietly wrong for every other, so the
+  `--money` flag, `pricing.py`, the `pricing` config section and the `cost_usd` and
+  `counterfactual_usd` ledger columns are all gone. Results are reported in tokens, ratios
+  and time, which mean the same thing to everybody. A test fails if any of it returns.
+- The vocabulary as well as the figures. A smaller model is described as smaller, a faster
+  path as faster and a lighter encoding as lighter, because that is the actual property and
+  it is true whatever your access looks like. The guard covers the package and the docs.
+- The generated design and plan documents under `docs/`. They described the code as it
+  was going to be written, not as it is, and shipped in the source distribution.
+
+### Fixed
+
+- `retention show` crashed with a `TypeError` on any non-empty ledger: the oldest day
+  arrived as a unix timestamp and went straight to rich's markup escaper. It now reads
+  as a date and says how long ago that was. The unit tests only ever ran it on an empty
+  ledger, which is why it shipped.
+- `verify` footnoted an advisory failure with the check's name, so six cache drift
+  signals were reported as `(no cache drift)`. It now prints what actually happened.
+- `apps` blamed the operating system when `TOKUNSEBA_NO_SESSION_ENV` was what stopped
+  it, telling macOS users macOS could not do this.
+
+
+- Python 3.14 is supported. `requires-python` said `<3.14`, so on a machine whose `python3`
+  is 3.14 -- which is now common -- `pip install tokunseba` refused before it started.
+  Every dependency publishes 3.14 wheels and the suite passes on it, so the ceiling was
+  only ever conservative. CI runs 3.12, 3.13 and 3.14.
+- Two judge tests read whether the laya extra happened to be installed on the machine
+  running them. They passed for whoever had run `uv sync --all-extras` and failed for
+  everyone else, CI included. They pin it now, like the tests either side of them do.
+
+- On a machine with no user service manager, `tokunseba start` wrote a systemd unit that
+  could never run and then reported `Started via ... (start failed: [WinError 2] ...)`.
+  It now says there is nothing to keep the proxy alive here, points at
+  `tokunseba start --foreground`, and exits non-zero. `stop`, `uninstall` and the `init`
+  disclosure say the same thing rather than naming a file that does nothing.
+
 [0.1.0]: https://github.com/keshavgarg24/tokunseba/releases/tag/v0.1.0
