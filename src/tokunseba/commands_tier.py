@@ -53,15 +53,18 @@ TIERS: list[Tier] = [
     ),
     Tier(
         2, "reach-preserving", "reach_preserving",
-        "Summarises long program output down to its structure, and replaces lock files, "
-        "minified bundles and binaries with a one-line description.",
-        "The shape of a long tool result. The assistant sees a summary and a handle "
-        "rather than ten thousand lines.",
+        "Summarises long program output down to its structure, folds the bodies out of "
+        "whole source files it was asked to read, and replaces lock files, minified "
+        "bundles and binaries with a one-line description.",
+        "The shape of a long tool result. The assistant sees a summary, or a file's "
+        "signatures and docstrings, and a handle rather than ten thousand lines.",
         "Reach-preserving means the full text stays one call away rather than gone. The "
         "risk it carries is real but bounded: if the answer depended on line 4000 of a "
-        "log, the assistant has to ask for it instead of already having it. Turn this "
-        "off if you work with output where every line matters and you would rather send "
-        "every one of them. Tier 1 keeps working without it.",
+        "log, the assistant has to ask for it instead of already having it. An outlined "
+        "file keeps every import, signature, decorator and docstring, and the line "
+        "numbers of what was folded, so asking for the right part is one call rather than "
+        "a search. Turn this off if you work with output where every line matters and you "
+        "would rather send every one of them. Tier 1 keeps working without it.",
     ),
     Tier(
         3, "opt-in", "tier3",

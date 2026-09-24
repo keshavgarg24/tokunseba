@@ -1,6 +1,9 @@
-"""Local JSON endpoints for the status line. Bound to localhost, never public.
+"""Local JSON endpoints, and the browser dashboard, bound to loopback and never public.
 
-There is deliberately no web page: the dashboard lives in the terminal (`tokunseba ui`).
+The terminal remains the default surface: `tokunseba ui` needs no browser and no port. The
+page mounted here is the same view for people who would rather leave it open on a second
+screen, and it is served by the proxy only because the proxy is already listening -- see
+`tokunseba.ui.web` for what it does and does not allow.
 """
 from __future__ import annotations
 
@@ -44,9 +47,6 @@ def mount_ui(app, ledger, cfg) -> None:
                      ("/_tokunseba/api/sessions", sessions), ("/_tokunseba/api/daily", daily),
                      ("/_tokunseba/api/ab", ab)):
         app.router.routes.insert(0, Route(path, fn, methods=["GET"]))
-    async def hint(request):
-        return JSONResponse({"tokunseba": "this is a local JSON API; the dashboard is "
-                                          "in your terminal: run `tokunseba ui`"})
-
-    app.router.routes.insert(0, Route("/_tokunseba/", hint, methods=["GET"]))
-    app.router.routes.insert(0, Route("/_tokunseba", hint, methods=["GET"]))
+    from .web import routes as web_routes
+    for route in web_routes(ledger, cfg, "/_tokunseba"):
+        app.router.routes.insert(0, route)

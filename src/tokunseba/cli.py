@@ -500,6 +500,52 @@ def ui(watch_flag: bool, since: str) -> None:
     _render_dashboard(watch_flag, since)
 
 
+@main.command()
+@click.option("--port", default=0, type=int,
+              help="Bind this port instead of asking the operating system for a free one.")
+@click.option("--no-open", is_flag=True, help="Print the address instead of opening a browser.")
+@click.option("--print-url", is_flag=True, help="Print the address and exit, serving nothing.")
+def dashboard(port: int, no_open: bool, print_url: bool) -> None:
+    """Open the dashboard in a browser. Local only: the page is served off 127.0.0.1.
+
+    The terminal dashboard (`tokunseba ui`) is still there and still needs nothing. This
+    is for when you want it open on another screen while you work.
+    """
+    from .ui.web import free_port, serve
+    cfg = config.load()
+    if print_url:
+        # The proxy already serves the same page; say so rather than start a second one.
+        from .service import running
+        if running(cfg.port):
+            console.print(f"http://127.0.0.1:{cfg.port}/_tokunseba/")
+            return
+        console.print("[dim]The proxy is not running, so there is no address to print. "
+                      "Run `tokunseba dashboard` to serve the page on its own, or "
+                      "`tokunseba start` first.[/dim]")
+        raise SystemExit(1)
+
+    port = port or free_port()
+    url = f"http://127.0.0.1:{port}/"
+    console.print(_banner("dashboard"))
+    console.print(f"  [bold]{url}[/bold]")
+    console.print("  [dim]Served to this machine only. The page fetches nothing from the "
+                  "internet, and\n  this process reads your local ledger and nothing else. "
+                  "Ctrl-C to stop.[/dim]\n")
+    if not no_open:
+        import webbrowser
+        webbrowser.open(url)
+    led = _ledger()
+    try:
+        serve(led, cfg, port)
+    except KeyboardInterrupt:  # the documented way out, not a failure
+        console.print("[dim]dashboard stopped[/dim]")
+    except OSError as e:
+        console.print(f"[red]Could not listen on port {port}: {e}[/red]")
+        raise SystemExit(1) from e
+    finally:
+        led.close()
+
+
 @main.command("watch")
 @click.option("--since", default="7d", help="e.g. 24h, 7d, 30d")
 def watch_cmd(since: str) -> None:

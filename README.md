@@ -7,7 +7,7 @@
 [![PyPI](https://img.shields.io/pypi/v/tokunseba)](https://pypi.org/project/tokunseba/)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-769%20passing-brightgreen)](#development)
+[![Tests](https://img.shields.io/badge/tests-850%20passing-brightgreen)](#development)
 [![Local only](https://img.shields.io/badge/network-localhost%20only-lightgrey)](#privacy-and-safety)
 
 </div>
@@ -89,10 +89,32 @@ How much tokunseba is allowed to do is a decision you make one layer at a time. 
 |---|---|---|
 | 0 observe | always on | Nothing. Every byte is forwarded exactly as the client sent it. Counts tokens, records what the cache did, writes the ledger. |
 | 1 reversible | on | Tool results only. Strips ANSI codes and progress-bar spam, replaces a repeated result with a pointer, replaces a re-read file with the diff since you last saw it, adds cache breakpoints clients forgot. |
-| 2 reach-preserving | on | The shape of a long tool result. Summarises test, build and install output down to what failed, with a handle to the full text. Replaces lock files and binaries with a one-line description. |
+| 2 reach-preserving | on | The shape of a long tool result. Summarises test, build and install output down to what failed. Folds the bodies out of a source file the assistant asked to read, keeping every import, signature, decorator and docstring. Replaces lock files and binaries with a one-line description. Everything has a handle to the full text. |
 | 3 opt-in | off | Which model answers, and the text of a request. Routes easy turns to smaller or local models, redacts credentials, labels suspected prompt injection. |
 
 Tier 3 is the only tier that can change an answer. It is off until you turn it on, and when it is on, sessions are randomly split between a control arm and a treatment arm so the ledger can tell you whether it actually helped.
+
+## Reading a file without sending all of it
+
+When an assistant asks to read a 2,000 line module, it almost never needs 2,000 lines. It needs to know what is in there. tokunseba folds the function bodies out and keeps everything that names something: imports, class declarations, signatures, decorators, docstrings, constants, and the line numbers of what went.
+
+```
+$ tokunseba explain 1f4c9a20e8bb
+...
+   6  /** Loads config and merges it with the defaults. */
+   7  export async function loadConfig(path: string): Promise<Config> {
+      // [tokunseba: 15 lines folded; whole file: tokunseba expand h_4b91c07e]
+  23  }
+  24
+  25  export class Proxy {
+  26    private port: number;
+  27
+  28    constructor(port: number) { this.port = port; }
+```
+
+The numbers that survive are the file's own, so the gap says exactly which lines are missing and the assistant can ask for those rather than for the file again. `tokunseba expand h_4b91c07e` returns the whole file, byte for byte.
+
+Python is parsed with the standard library, so the ranges are exact. JavaScript, TypeScript, Go, Rust, Java, Kotlin, Swift, C, C++, C# and PHP are scanned with a reader that tracks strings and comments, and when the scan is not certain it folds nothing: a file forwarded whole is merely large, a file folded in the wrong place is wrong. Short files, short bodies, files that do not parse, and files that are mostly signatures already are all left exactly as they arrived.
 
 ## Try a setting before you commit to it
 
@@ -280,6 +302,7 @@ tokunseba report --save out.txt        write the same page to a file
 tokunseba top                  the biggest savings, and what could not be helped
 tokunseba ui                   dashboard in this terminal
 tokunseba watch                the same, live
+tokunseba dashboard            the same in a browser, served from 127.0.0.1
 tokunseba explain <request-id> original beside replacement, block by block
 tokunseba expand <handle>      the full original text behind a handle
 ```
@@ -328,6 +351,22 @@ History is kept for 90 days unless you say otherwise:
 ```bash
 tokunseba retention keep 1y
 ```
+
+## The dashboard
+
+`tokunseba ui` draws the whole thing in your terminal, and `tokunseba watch` keeps it redrawing. Neither needs a browser, a port or a window, which matters when the machine you are working on is reached over ssh.
+
+When you would rather leave it open on a second screen:
+
+```bash
+tokunseba dashboard
+```
+
+That serves one page off `127.0.0.1` on a port the operating system picks, and opens it. Tokens never sent, per day and in total, what the cache covered, which tools sent the traffic, which models actually answered, the largest reductions and the largest blocks nothing could be done about, what the judge made of your prompts, every signal the proxy logged, and the recent conversations. It refreshes itself every few seconds and stops asking when the tab is hidden.
+
+Three things about that page are enforced rather than promised. The socket binds the loopback address. Every request is checked against the `Host` header it arrived with, which is what stops a page you happened to be visiting from reaching in by pointing a hostname at `127.0.0.1` — the browser's own origin rules do not cover that. And the page is a single file with no external reference in it: no font host, no script CDN, no beacon. Pull the network cable out and it still renders.
+
+If the proxy is already running, the same page is at `http://127.0.0.1:7777/_tokunseba/` and `tokunseba dashboard --print-url` will tell you so rather than starting a second server.
 
 ## Why it does not break your prompt cache
 

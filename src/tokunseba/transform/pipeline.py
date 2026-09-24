@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 
 from ..ledger import Ledger, TransformRow
 from ..protocols.base import NormalizedRequest, json_set, sha256_text
-from . import canonical, dedup, encodings, junk, summarize
+from . import canonical, dedup, encodings, junk, outline, summarize
 from .handles import HandleStore
 from .table import FrozenTable
 
@@ -111,7 +111,24 @@ class Pipeline:
                 return TransformRow(key, "diff_ref", d, orig_tokens,
                                     self.est.count(d, provider, model), handle if ok else "", ref_sha)
 
-        # 5. structural summary of program output, with a handle to the rest
+        # 5. a whole source file: keep everything that names something, fold the bodies.
+        #    Before the summariser, because a summariser that does not know this is code
+        #    keeps the first N lines -- which is the imports and nothing the question was
+        #    about. An outline keeps every signature in the file instead, at a similar size.
+        if reach:
+            lang = outline.language(path, text)
+            if lang:
+                handle, ok = self._store(orig)
+                shown, folded, bodies = outline.outline(lang, text, handle if ok else "")
+                if folded:
+                    shown = shown.rstrip("\n") + "\n" + outline.footer(
+                        lang, folded, bodies, handle if ok else "")
+                    new_tokens = self.est.count(shown, provider, model)
+                    if new_tokens < self.est.count(text, provider, model):
+                        return TransformRow(key, f"outline:{lang}", shown, orig_tokens,
+                                            new_tokens, handle if ok else "", "")
+
+        # 6. structural summary of program output, with a handle to the rest
         if reach:
             tool_name = None
             command = None
@@ -128,7 +145,7 @@ class Pipeline:
                 return TransformRow(key, f"summary:{kind_label}", kept, orig_tokens,
                                     self.est.count(kept, provider, model), self._handle_of(orig), "")
 
-        # 6. a smaller encoding, only if the tokenizer agrees it is smaller.
+        # 7. a smaller encoding, only if the tokenizer agrees it is smaller.
         #    A table loses JSON types: null and "" both render empty, true and "true" both
         #    render true. So it carries a handle like every other shortening branch, and the
         #    saving must still clear the bar after paying for that line.
@@ -143,7 +160,7 @@ class Pipeline:
                 return TransformRow(key, f"encoding:{ekind}", encoded, orig_tokens,
                                     new_tokens, handle if ok else "", "")
 
-        # 7. last resort: keep the head and the tail, defer the middle
+        # 8. last resort: keep the head and the tail, defer the middle
         max_lines, max_tokens = self._truncate_limit(provider)
         cur_tokens = self.est.count(text, provider, model)
         lines = text.split("\n")

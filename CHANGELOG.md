@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tokunseba dashboard` serves the same view as `tokunseba ui` as one page off `127.0.0.1`
+  and opens it. The terminal dashboard is unchanged and still the default: nothing opens a
+  browser unless you run the command whose name says so. The page has no external reference
+  in it, refuses any `Host` but this machine's, and the proxy serves the same page at
+  `/_tokunseba/` when it is already running.
+- Source files are now outlined rather than truncated. A file the assistant asked to read
+  comes through with its imports, class declarations, signatures, decorators, docstrings and
+  constants intact and each long function body replaced by one line saying how many lines
+  went and which handle holds the file. Line-number gutters are preserved, so the gap names
+  exactly which lines to ask for. Python is parsed with the standard library; JavaScript,
+  TypeScript, Go, Rust, Java, Kotlin, Swift, Scala, C, C++, C#, Objective-C and PHP are
+  scanned with a reader that tracks strings and comments and folds nothing when it is not
+  certain.
+
 - Cross-protocol routing. A rule may now send a turn to an upstream that speaks a
   different protocol from the client: `protocols/translate.py` rewrites the request on
   the way out and the reply on the way back, for Anthropic to OpenAI and Anthropic to

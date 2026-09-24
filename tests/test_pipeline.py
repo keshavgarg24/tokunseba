@@ -306,3 +306,63 @@ def test_the_first_block_of_a_message_is_never_a_reference_to_itself(pipe):
             {"type": "tool_result", "tool_use_id": "a", "content": [{"type": "text", "text": text}]}]}]}
     p.apply(A.parse(body), body, 0, "s", "r")
     assert "identical to an earlier" not in body["messages"][1]["content"][0]["content"][0]["text"]
+
+
+# ------------------------------------------------------- outlining a source file
+def _module(bodies=6, lines=14):
+    parts = ["import os", "from typing import Any", "", "TIMEOUT = 30.0", "",
+             "class Client:", '    """A client."""', ""]
+    for i in range(bodies):
+        parts += ["    @property", f"    def method_{i}(self, arg: str) -> int:",
+                  f'        """What method {i} does."""']
+        parts += [f"        x_{j} = {j} * {i}" for j in range(lines)]
+        parts += ["        return x_0", ""]
+    return "\n".join(parts)
+
+
+def test_a_source_file_comes_back_as_an_outline(pipe):
+    p, _cfg, led = pipe
+    src = _module()
+    body = build([("Read", "/repo/client.py", src)])
+    out = p.apply(A.parse(body), body, 0, "s", "req1")
+    assert [a.kind for a in out.applied] == ["outline:python"]
+    shown = text_at(out.body, 1)
+    assert "class Client:" in shown and "def method_5(self, arg: str) -> int:" in shown
+    assert "x_9 = 9 * 5" not in shown
+    assert out.saved > 0
+
+
+def test_the_outlined_file_is_recoverable_to_the_byte(pipe, home):
+    """The marker names a handle. That handle has to hold the file exactly as it arrived."""
+    p, _cfg, _led = pipe
+    src = _module()
+    body = build([("Read", "/repo/client.py", src)])
+    out = p.apply(A.parse(body), body, 0, "s", "req1")
+    handle = out.applied[0].handle
+    assert handle and handle in text_at(out.body, 1)
+    assert HandleStore(home / "blobs").get(handle) == src
+
+
+def test_a_source_file_small_enough_to_send_is_sent(pipe):
+    p, _cfg, _led = pipe
+    src = "import os\n\n\ndef f():\n    return 1\n"
+    body = build([("Read", "/repo/tiny.py", src)])
+    out = p.apply(A.parse(body), body, 0, "s", "req1")
+    assert text_at(out.body, 1) == src
+
+
+def test_a_log_file_is_still_summarised_rather_than_outlined(pipe):
+    """The outline step must not swallow the cases the summariser already handled."""
+    p, _cfg, _led = pipe
+    log = "\n".join(f"2026-01-01 12:00:{i:02d} INFO worker {i} ok" for i in range(400))
+    body = build([("Bash", None, log)])
+    out = p.apply(A.parse(body), body, 0, "s", "req1")
+    assert out.applied and not out.applied[0].kind.startswith("outline")
+
+
+def test_the_users_own_prose_is_never_outlined(pipe):
+    """Only tool results are rewritten. A question that happens to contain code is not one."""
+    p, _cfg, _led = pipe
+    body = {"model": "claude-opus-5", "messages": [{"role": "user", "content": _module()}]}
+    out = p.apply(A.parse(body), body, 0, "s", "req1")
+    assert out.body["messages"][0]["content"] == _module()
