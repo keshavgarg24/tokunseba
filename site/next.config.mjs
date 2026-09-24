@@ -24,6 +24,9 @@ const config = {
   // There is a lockfile further up the tree on this machine and Next picks the outermost
   // one as the workspace root unless told otherwise.
   outputFileTracingRoot: import.meta.dirname,
+  // Next regenerates AGENTS.md and CLAUDE.md in this directory on every dev start. The
+  // repository already has its own at the root, so these are noise in `git status`.
+  agentRules: false,
 };
 
 export default withMDX(config);
