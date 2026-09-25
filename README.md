@@ -461,7 +461,7 @@ uv sync --group dev
 uv run pytest -q
 ```
 
-687 tests, no network access required, and no model weights downloaded by the default run.
+no network access required, and no model weights downloaded by the default run.
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md).
 
